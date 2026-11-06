@@ -76,4 +76,26 @@ python -m ipykernel install --user --name ml-lab --display-name "Python (ml-lab)
 jupyter lab --ip=127.0.0.1 --port=8888 --no-browser
 ```
 
-Remote access from the MacBook is planned for v0.3.
+For remote notebooks, use VS Code Remote-SSH and pick the `ml-lab` kernel. See
+"Remote access" in the main README.
+
+## Coding agents
+
+Keep an `AGENTS.md` in each ML project with GPU, secret and long-job rules. Agents
+run as your Linux user, so these rules guide them but do not stop them from reading
+your secret or backups. Keep approval prompts on.
+
+- **Codex:** in the ChatGPT desktop app, switch the agent and integrated terminal to
+  WSL, restart, and open the project from `\\wsl$\Ubuntu\home\YOUR_USER\projects`. A
+  chat outside a project runs in a temporary folder and misses your rules, so check
+  `pwd` first. Pair your phone under Settings > Connections.
+- **Codex GPU use:** its sandbox blocks the GPU. Keep file work inside the sandbox and
+  approve each GPU command on its own. Do not grant full access, and do not always
+  allow `python`, because that effectively turns the sandbox off.
+- **Claude Code:** the desktop app can run commands through `wsl` and continue from
+  your phone with Remote Control. Windows searches of `\\wsl` folders are slow with a
+  large `.venv`, so run searches inside Ubuntu.
+- **Long jobs:** start training in its own `tmux` session with `python -u`, logs and
+  checkpoints. It then keeps running after the agent's command ends.
+
+The PC must stay on and signed in, and the desktop app must stay open.

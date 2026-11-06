@@ -40,9 +40,9 @@ Exit: authorized remote use from outside home, the correct WSL context, reboot t
 - [x] Open WebUI over Tailscale Serve for MacBook and iPhone
 - [x] VS Code Remote-SSH from MacBook into WSL Ubuntu, from outside the home network
 - [x] Remote notebooks on the workstation GPU
-- [ ] Reboot test: remote access returns after a manual Windows sign-in
+- [x] Reboot test: services return on their own after a manual Windows sign-in
 - [ ] Optional unattended recovery after a Windows restart
-- [ ] Codex workflow in the WSL project context
+- [x] Claude Code and Codex desktop workflows reaching WSL, driven from a phone
 
 ## v0.4 — GPU coordination
 Exit: conflicting jobs stay controlled and recover after failure.
