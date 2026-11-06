@@ -1,0 +1,24 @@
+name: Validate starter
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: |
+          bash -n scripts/aiws.sh
+          bash -n scripts/setup-wsl-ssh.sh
+          bash -n scripts/test-aiws.sh
+      - name: CLI fixture tests
+        run: bash scripts/test-aiws.sh
+      - name: Python syntax
+        run: python -m py_compile scripts/check-ml.py ml/smoke-train.py
+      - name: Compose schema without real secrets
+        env:
+          WEBUI_SECRET_KEY: ci_dummy_not_a_real_secret
+        run: docker compose -f compose.yaml config --quiet

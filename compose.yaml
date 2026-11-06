@@ -1,0 +1,56 @@
+name: home-ai-workstation
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_TAG:-0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      OLLAMA_KEEP_ALIVE: "5m"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_CONTEXT_LENGTH: "8192"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Ollama API is only available to containers on this private network.
+    # The NVIDIA device reservation is supported in modern Docker Compose.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - ai_internal
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${OPEN_WEBUI_TAG:-main@sha256:975e3965dcf5832804d2f77e167920794757027c5a2046917d42023d75fac431}
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_AUTH: "True"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?Run 'bash scripts/aiws.sh init' before starting}
+    ports:
+      - "127.0.0.1:${OPEN_WEBUI_PORT:-3000}:8080"
+    volumes:
+      - open_webui_data:/app/backend/data
+    networks:
+      - ai_internal
+
+networks:
+  ai_internal:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  open_webui_data:

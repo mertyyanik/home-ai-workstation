@@ -1,0 +1,10 @@
+# Optional: Copy this file to C:\Users\<you>\.wslconfig on Windows.
+# These are starting values for a Windows PC with 16 GB system RAM.
+# Includes ALL WSL2 distributions and Docker Desktop's WSL backend.
+# Apply changes in PowerShell: wsl --shutdown
+[wsl2]
+memory=10GB
+swap=4GB
+
+[experimental]
+autoMemoryReclaim=gradual
