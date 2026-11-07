@@ -71,7 +71,7 @@ check "secret unchanged" '[[ "$(sha256sum "$E")" == "$sum1" ]]'
 sed -i 's/^DEFAULT_MODEL=.*/DEFAULT_MODEL=/' "$E"
 : > "$FAKE_DOCKER_LOG"
 bash "$A" pull >/dev/null 2>&1
-check "pull passes --env-file and default model" 'grep -q -- "--env-file $E exec -T ollama ollama pull qwen3:4b" "$FAKE_DOCKER_LOG"'
+check "pull passes --env-file and default model" 'grep -q -- "--env-file $E exec -T ollama ollama pull qwen3.5:4b" "$FAKE_DOCKER_LOG"'
 
 # 3. up waits for readiness, within a limit
 sed -i 's/^OPEN_WEBUI_PORT=.*/OPEN_WEBUI_PORT=3199/' "$E"
@@ -248,7 +248,7 @@ check "chat starts and waits" '[[ $rc -eq 0 ]] && grep -q "up -d" "$FAKE_DOCKER_
 : > "$FAKE_DOCKER_LOG"
 bash "$A" pull-recommended >/dev/null 2>&1; rc=$?
 check "pull-recommended succeeds" '[[ $rc -eq 0 ]]'
-check "pull-recommended pulls both models" 'grep -q "ollama pull qwen3:4b" "$FAKE_DOCKER_LOG" && grep -q "ollama pull qwen2.5-coder:7b" "$FAKE_DOCKER_LOG"'
+check "pull-recommended pulls both models" 'grep -q "ollama pull qwen3.5:4b" "$FAKE_DOCKER_LOG" && grep -q "ollama pull qwen2.5-coder:7b" "$FAKE_DOCKER_LOG"'
 : > "$FAKE_DOCKER_LOG"
 AIWS_MODELS='one:1b two:2b' bash "$A" pull-recommended >/dev/null 2>&1
 check "AIWS_MODELS overrides the list" '[[ "$(grep -c "ollama pull" "$FAKE_DOCKER_LOG")" == 2 ]] && grep -q "ollama pull two:2b" "$FAKE_DOCKER_LOG" && ! grep -q "qwen3" "$FAKE_DOCKER_LOG"'
@@ -267,7 +267,7 @@ check "install succeeds on a clean home" '[[ $rc -eq 0 ]]'
 check "install creates the env file" '[[ -f "$E" && "$(stat -c %a "$E")" == 600 ]]'
 check "install runs the GPU test" '[[ "$(grep -c -- "--gpus all" "$FAKE_DOCKER_LOG")" == 2 ]]'
 check "install starts services" 'grep -q "up -d" "$FAKE_DOCKER_LOG"'
-check "install pulls models" 'grep -q "ollama pull qwen3:4b" "$FAKE_DOCKER_LOG"'
+check "install pulls models" 'grep -q "ollama pull qwen3.5:4b" "$FAKE_DOCKER_LOG"'
 check "install explains the next step" 'grep -q "create the first account" <<<"$out"'
 check "install hides the secret" '! grep -q "$(sed -n "s/^WEBUI_SECRET_KEY=//p" "$E")" <<<"$out"'
 sum1="$(sha256sum "$E")"

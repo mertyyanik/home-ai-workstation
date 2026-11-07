@@ -25,6 +25,7 @@ Versions follow the stages in `docs/ROADMAP.md`. No version has been published y
 - Open WebUI pinned to the `v0.13.0` release image, built from the same source commit
   as the earlier pin
 - `gpu-test` images pinned to digests
+- Default model changed to `qwen3.5:4b`, after comparing local models on 8 GB
 
 ## 0.2.0
 

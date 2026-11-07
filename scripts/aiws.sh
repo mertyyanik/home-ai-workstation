@@ -34,7 +34,7 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh doctor             Check Docker, env file, disk space and port
   bash scripts/aiws.sh gpu-test           Verify GPU visibility and run a CUDA compute test
   bash scripts/aiws.sh up                 Start Ollama + Open WebUI and wait until ready
-  bash scripts/aiws.sh pull [model]       Download a model (default: qwen3:4b)
+  bash scripts/aiws.sh pull [model]       Download a model (default: qwen3.5:4b)
   bash scripts/aiws.sh pull-recommended   Download the recommended local models
   bash scripts/aiws.sh models             List downloaded models
   bash scripts/aiws.sh active             Show models currently loaded in memory
@@ -104,7 +104,7 @@ env_value() {
 default_model() {
   local model
   model="$(env_value DEFAULT_MODEL)"
-  echo "${model:-qwen3:4b}"
+  echo "${model:-qwen3.5:4b}"
 }
 
 compose() {
@@ -543,7 +543,7 @@ case "${1:-help}" in
     ;;
   pull-recommended)
     require_docker; require_env
-    read -r -a models <<< "${AIWS_MODELS:-qwen3:4b qwen2.5-coder:7b}"
+    read -r -a models <<< "${AIWS_MODELS:-qwen3.5:4b qwen2.5-coder:7b}"
     for model in "${models[@]}"; do
       echo "Downloading $model..."
       compose exec -T ollama ollama pull "$model"

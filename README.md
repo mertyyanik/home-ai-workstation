@@ -67,7 +67,7 @@ paired with existing data.
 ```bash
 bash scripts/aiws.sh status            # Containers, loaded models, GPU memory
 bash scripts/aiws.sh logs ollama       # Last 100 lines; add -f to follow
-bash scripts/aiws.sh unload qwen3:4b   # Release GPU memory, keep the service
+bash scripts/aiws.sh unload qwen3.5:4b # Release GPU memory, keep the service
 bash scripts/aiws.sh ml                # Stop Ollama for heavy ML work
 bash scripts/aiws.sh chat              # Start services again
 bash scripts/aiws.sh stop              # Stop services, keep containers and data
@@ -80,13 +80,15 @@ to change that limit.
 
 ## Local models
 
-`pull-recommended` downloads the two models below. Results come from a small test on an
-8 GB GPU at 16K context, so treat them as a starting point, not a benchmark.
+`pull-recommended` downloads `qwen3.5:4b` and `qwen2.5-coder:7b`. The table comes from a
+small test on an 8 GB GPU at 16K context, so treat it as a starting point, not a benchmark.
 
-| Model | Best for | VRAM | Structured tool calls |
-| --- | --- | --- | --- |
-| `qwen3:4b` | General chat and tool-using tasks | About 5.5 GB | Yes |
-| `qwen2.5-coder:7b` | Writing code in chat | About 5.9 GB | No |
+| Model | Best for | GPU fit | VRAM | Tokens/s | Structured tool calls |
+| --- | --- | --- | --- | --- | --- |
+| `qwen3.5:4b` | General chat and tool-using tasks | Full | About 5 GB | 71 | Yes |
+| `gemma4:e2b` | Fast answers | Full | About 4.1 GB | 135 | Yes |
+| `qwen2.5-coder:7b` | Writing code in chat | Full | About 6 GB | 63 | No |
+| `qwen3.5:9b` | Slower answers from a larger model | 84% | About 7 GB | 27 | Yes |
 
 Set `AIWS_MODELS` to choose a different list. Only one model loads at a time, and it
 leaves GPU memory after 5 idle minutes. A 32K context did not fit fully on 8 GB.

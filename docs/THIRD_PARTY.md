@@ -9,7 +9,8 @@ advice. Last reviewed in November 2026.
 | --- | --- | --- |
 | [Ollama](https://github.com/ollama/ollama) | Official Docker image, pulled at install | MIT |
 | [Open WebUI](https://github.com/open-webui/open-webui) | Official Docker image, pulled at install | Open WebUI License |
-| `qwen3:4b` | Downloaded by the user through Ollama | Apache 2.0 |
+| `qwen3.5:4b` | Downloaded by the user through Ollama | Apache 2.0 |
+| `gemma4:e2b` | Optional, downloaded by the user through Ollama | Apache 2.0 |
 | `qwen2.5-coder:7b` | Downloaded by the user through Ollama | Apache 2.0 |
 | NVIDIA CUDA images | Used only by `gpu-test` | NVIDIA terms |
 | PyTorch and JupyterLab | Installed by the user, following `ml/README.md` | Their own licenses |
