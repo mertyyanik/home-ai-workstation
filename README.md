@@ -4,8 +4,9 @@ Turn a Windows PC with an NVIDIA GPU into a private AI workstation: local chat, 
 machine learning, and secure access from your other devices. It runs on Windows, WSL2
 and Docker Desktop, and nothing is exposed to the internet.
 
-**Status:** `0.3.0-dev`, not published yet. Everything marked as tested below ran on one
-PC: Windows 11, RTX 2060 SUPER (8 GB), 16 GB RAM. Other hardware is untested.
+**Status:** `0.3.0-dev`, an early version. Everything marked as tested below ran on one
+PC: Windows 11, RTX 2060 SUPER (8 GB), 16 GB RAM. Other hardware is untested, and
+installation on a completely clean system has not been tested yet.
 
 ## What you get
 
@@ -36,8 +37,15 @@ wsl --install -d Ubuntu
 
 ## Quick start
 
-Download the project, then run this from its folder in Windows PowerShell. Administrator
-rights are not needed:
+Download the project with **Code > Download ZIP** on
+[GitHub](https://github.com/mertyyanik/home-ai-workstation), or clone it in Ubuntu:
+
+```bash
+git clone https://github.com/mertyyanik/home-ai-workstation.git ~/projects/home-ai-workstation
+```
+
+Then run this from the project folder in Windows PowerShell. Administrator rights are not
+needed:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1

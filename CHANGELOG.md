@@ -1,6 +1,6 @@
 # Changelog
 
-Versions follow the stages in `docs/ROADMAP.md`. No version has been published yet.
+Versions follow the stages in `docs/ROADMAP.md`. No tagged release exists yet.
 
 ## 0.3.0-dev
 
