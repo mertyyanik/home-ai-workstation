@@ -241,6 +241,9 @@ out="$(bash "$A" ml 2>&1)"; rc=$?
 check "ml stops only ollama" '[[ $rc -eq 0 ]] && grep -q "stop ollama$" "$FAKE_DOCKER_LOG" && ! grep -q "stop open-webui" "$FAKE_DOCKER_LOG"'
 check "ml explains how to return" 'grep -q "aiws.sh chat" <<<"$out"'
 : > "$FAKE_DOCKER_LOG"
+bash "$A" webui-stop >/dev/null 2>&1; rc=$?
+check "webui-stop stops only Open WebUI" '[[ $rc -eq 0 ]] && grep -q "stop open-webui$" "$FAKE_DOCKER_LOG" && ! grep -q "stop ollama" "$FAKE_DOCKER_LOG"'
+: > "$FAKE_DOCKER_LOG"
 out="$(bash "$A" chat 2>&1)"; rc=$?
 check "chat starts and waits" '[[ $rc -eq 0 ]] && grep -q "up -d" "$FAKE_DOCKER_LOG" && grep -q "are ready" <<<"$out"'
 

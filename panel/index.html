@@ -38,6 +38,16 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .ok { color: var(--good); }
 .bad { color: var(--warn); }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface); }
+.modes button { min-height: 48px; border: 0; border-radius: 10px; background: transparent; color: var(--soft); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.modes button[aria-pressed="true"] { background: var(--accent); color: #08201D; font-weight: 700; }
+.modes button.ml[aria-pressed="true"] { background: var(--warn); color: #2B1A05; }
+.btn { min-height: 44px; padding: 0 14px; border: 1px solid #3A4750; border-radius: 10px; background: transparent; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.service { align-items: center; }
+.service .state { display: flex; align-items: center; gap: 12px; }
+#job { display: none; padding: 12px 16px; border-radius: 12px; background: var(--surface); font-size: 14px; color: var(--soft); }
 #error { display: none; padding: 12px 16px; border-radius: 12px; background: #3A2A14; color: var(--warn); font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .bar > div { transition: none; } }
 </style>
@@ -55,6 +65,11 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
     </div>
   </header>
   <div id="error" role="alert" data-t="error"></div>
+  <section class="modes" id="modes" aria-label="Mode" hidden>
+    <button type="button" id="mode-chat" data-t="chatMode"></button>
+    <button type="button" id="mode-ml" class="ml" data-t="mlMode"></button>
+  </section>
+  <div id="job" role="status"></div>
   <div class="columns">
     <div class="stack">
       <section class="card" aria-labelledby="gpu-title">
@@ -69,6 +84,7 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
         <h2 id="model-title" data-t="model"></h2>
         <span class="big" id="model-name"></span>
         <span class="small" id="model-detail"></span>
+        <button type="button" class="btn" id="unload" data-t="unload" hidden></button>
       </section>
     </div>
     <div class="stack">
@@ -83,6 +99,7 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
       <section class="card">
         <span class="small" data-t="backup"></span>
         <span class="big" id="backup"></span>
+        <button type="button" class="btn" id="backup-now" data-t="backupNow" hidden></button>
       </section>
     </div>
   </div>
@@ -94,7 +111,15 @@ const TEXT = {
     title: 'Workstation', updated: 'Updated', vram: 'VRAM', usage: 'Usage', temperature: 'Temperature',
     model: 'Loaded model', services: 'Services', memory: 'Ubuntu memory', disk: 'Free disk', backup: 'Last backup',
     noModel: 'None', gpuShare: 'GPU', unloads: 'Unloads', never: 'None yet', unavailable: 'Unavailable',
-    chatMode: 'Chat mode', mlMode: 'ML mode', dockerDown: 'Docker unreachable', signOut: 'Sign out', error: 'The panel cannot read the status. Is the panel still running?',
+    chatMode: 'Chat mode', mlMode: 'ML mode', dockerDown: 'Docker unreachable', signOut: 'Sign out',
+    unload: 'Unload model', backupNow: 'Back up now', start: 'Start', stop: 'Stop',
+    askMl: 'Stop Ollama for ML work? Chat will be unavailable.',
+    askStopWebui: 'Stop Open WebUI? Chat mode starts it again.',
+    askBackup: 'Back up now? Open WebUI stops for a few seconds.',
+    busy: 'Another action is running.', refused: 'The panel refused this action.',
+    jobChat: 'Starting services', jobMl: 'Switching to ML mode', jobBackup: 'Backup',
+    jobUnload: 'Unloading the model', jobWebui: 'Stopping Open WebUI',
+    running_job: 'in progress…', done_job: 'finished.', failed_job: 'failed. Check the logs.', error: 'The panel cannot read the status. Is the panel still running?',
     running: 'Running', exited: 'Stopped', created: 'Stopped', paused: 'Paused', restarting: 'Restarting',
     missing: 'Not created', listening: 'Listening', closed: 'Closed', connected: 'Connected',
     disconnected: 'Disconnected', unknown: 'Unknown'
@@ -103,7 +128,15 @@ const TEXT = {
     title: 'Çalışma İstasyonu', updated: 'Güncellendi', vram: 'VRAM', usage: 'Kullanım', temperature: 'Sıcaklık',
     model: 'Yüklü model', services: 'Servisler', memory: 'Ubuntu belleği', disk: 'Boş disk', backup: 'Son yedek',
     noModel: 'Yok', gpuShare: 'GPU', unloads: 'Boşalma', never: 'Henüz yok', unavailable: 'Okunamadı',
-    chatMode: 'Sohbet modu', mlMode: 'ML modu', dockerDown: 'Docker erişilemiyor', signOut: 'Çıkış', error: 'Panel durumu okuyamıyor. Panel hâlâ çalışıyor mu?',
+    chatMode: 'Sohbet modu', mlMode: 'ML modu', dockerDown: 'Docker erişilemiyor', signOut: 'Çıkış',
+    unload: 'Modeli bellekten çıkar', backupNow: 'Şimdi yedekle', start: 'Başlat', stop: 'Durdur',
+    askMl: 'ML işi için Ollama durdurulsun mu? Sohbet kullanılamaz.',
+    askStopWebui: 'Open WebUI durdurulsun mu? Sohbet modu onu tekrar başlatır.',
+    askBackup: 'Şimdi yedeklensin mi? Open WebUI birkaç saniye durur.',
+    busy: 'Başka bir işlem çalışıyor.', refused: 'Panel bu işlemi reddetti.',
+    jobChat: 'Servisler başlatılıyor', jobMl: 'ML moduna geçiş', jobBackup: 'Yedekleme',
+    jobUnload: 'Model bellekten çıkarılıyor', jobWebui: 'Open WebUI durduruluyor',
+    running_job: 'devam ediyor…', done_job: 'tamamlandı.', failed_job: 'başarısız. Logları kontrol et.', error: 'Panel durumu okuyamıyor. Panel hâlâ çalışıyor mu?',
     running: 'Çalışıyor', exited: 'Durduruldu', created: 'Durduruldu', paused: 'Duraklatıldı', restarting: 'Yeniden başlıyor',
     missing: 'Oluşturulmadı', listening: 'Dinliyor', closed: 'Kapalı', connected: 'Bağlı',
     disconnected: 'Bağlı değil', unknown: 'Bilinmiyor'
@@ -155,6 +188,69 @@ function renderModel(models) {
   setText('model-detail', parts.join(' · '));
 }
 
+const JOB_NAMES = { chat: 'jobChat', ml: 'jobMl', backup: 'jobBackup', unload: 'jobUnload', webui_stop: 'jobWebui' };
+let controls = false;
+let busy = false;
+let notice = '';
+
+async function act(action, question) {
+  if (busy || (question && !window.confirm(question))) return;
+  busy = true;
+  updateButtons();
+  try {
+    const response = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-AIWS-Action': '1' },
+      body: JSON.stringify({ action })
+    });
+    if (response.status === 401) {
+      location.href = '/login';
+      return;
+    }
+    notice = response.status === 202 ? '' : response.status === 409 ? t.busy : t.refused;
+  } catch {
+    notice = t.refused;
+  }
+  await refresh();
+}
+
+function updateButtons() {
+  document.querySelectorAll('.modes button, .btn').forEach((button) => { button.disabled = busy; });
+}
+
+function serviceButton(key, state) {
+  const running = state === 'running';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn';
+  button.disabled = busy;
+  button.textContent = running ? t.stop : t.start;
+  if (!running) button.addEventListener('click', () => act('chat'));
+  else if (key === 'ollama') button.addEventListener('click', () => act('ml', t.askMl));
+  else button.addEventListener('click', () => act('webui_stop', t.askStopWebui));
+  return button;
+}
+
+function renderJob(job) {
+  const box = byId('job');
+  busy = Boolean(job && job.state === 'running');
+  const recent = job && (job.state === 'running' || Date.now() / 1000 - job.finished < 60);
+  const message = notice || (recent ? `${t[JOB_NAMES[job.action]] || job.action} ${t[`${job.state}_job`]}` : '');
+  box.textContent = message;
+  box.style.display = message ? 'block' : 'none';
+}
+
+function renderControls(data) {
+  controls = Boolean(data.controls);
+  const chat = data.services.ollama === 'running';
+  byId('modes').hidden = !controls;
+  byId('mode').hidden = controls && data.services.ollama !== 'unknown';
+  byId('mode-chat').setAttribute('aria-pressed', String(chat));
+  byId('mode-ml').setAttribute('aria-pressed', String(!chat));
+  byId('unload').hidden = !controls || !data.models.length;
+  byId('backup-now').hidden = !controls;
+}
+
 function renderServices(services) {
   const list = byId('services');
   list.replaceChildren(...SERVICES.map(([key, name]) => {
@@ -162,10 +258,16 @@ function renderServices(services) {
     row.className = 'service';
     const label = document.createElement('span');
     label.textContent = name;
+    const right = document.createElement('span');
+    right.className = 'state';
     const state = document.createElement('span');
     state.textContent = t[services[key]] || t.unknown;
     state.className = GOOD.has(services[key]) ? 'ok' : 'bad';
-    row.append(label, state);
+    right.append(state);
+    if (controls && (key === 'ollama' || key === 'open_webui') && services[key] !== 'unknown') {
+      right.append(serviceButton(key, services[key]));
+    }
+    row.append(label, right);
     return row;
   }));
   const chat = services.ollama === 'running';
@@ -176,9 +278,12 @@ function renderServices(services) {
 
 function render(data) {
   byId('logout').hidden = !data.login_required;
+  renderJob(data.job);
+  renderControls(data);
   renderGpu(data.gpu);
   renderModel(data.models);
   renderServices(data.services);
+  updateButtons();
   setText('memory', data.memory ? `${gib(data.memory.used_bytes)} / ${gib(data.memory.total_bytes)} GB` : t.unavailable);
   setText('disk', data.disk ? `${Math.floor(data.disk.free_bytes / 1024 ** 3)} GB` : t.unavailable);
   setText('backup', data.last_backup ? new Date(data.last_backup * 1000).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }) : t.never);
@@ -200,8 +305,17 @@ async function refresh() {
   }
 }
 
+byId('mode-chat').addEventListener('click', () => {
+  if (byId('mode-chat').getAttribute('aria-pressed') !== 'true') act('chat');
+});
+byId('mode-ml').addEventListener('click', () => {
+  if (byId('mode-ml').getAttribute('aria-pressed') !== 'true') act('ml', t.askMl);
+});
+byId('unload').addEventListener('click', () => act('unload'));
+byId('backup-now').addEventListener('click', () => act('backup', t.askBackup));
+
 refresh();
-setInterval(refresh, 5000);
+setInterval(() => { notice = ''; refresh(); }, 3000);
 </script>
 </body>
 </html>

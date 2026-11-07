@@ -45,9 +45,13 @@ providers use the network.
 - Keep Open WebUI and Ollama on `127.0.0.1`. Do not change them to `0.0.0.0`, and do not
   forward ports through your router.
 - Never forward Ollama, Jupyter or the Docker API through Tailscale, and never use Funnel.
-- Publish the status panel only with a password. Use a unique one: anyone who has it can
-  read status from any device in your tailnet. It is stored as a salted scrypt hash in
-  `~/.config/home-ai-workstation/panel.json`, and sign-in is always required once it is set.
+- Publish the status panel only with a password. Use a unique one: anyone who has it, on a
+  device in your tailnet, can see status, stop services and start a backup. It is stored as
+  a salted scrypt hash in `~/.config/home-ai-workstation/panel.json`, and sign-in is always
+  required once it is set.
+- Panel controls run a fixed list of `aiws` commands, one at a time. No text from a request
+  reaches a command, the panel gets no Docker socket of its own, and it cannot delete or
+  restore data. It runs as your Ubuntu user, so a bug in it would have that user's access.
 - Use a strong, unique password for the first Open WebUI account. Sign-up was off after
   the first account in testing. Confirm this in the admin settings.
 - Do not give containers the Docker socket, your home folder or SSH keys.

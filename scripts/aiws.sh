@@ -47,6 +47,7 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh restart            Restart services and wait until ready
   bash scripts/aiws.sh ml                 Stop Ollama to free the GPU for ML work
   bash scripts/aiws.sh chat               Start services again after ML work
+  bash scripts/aiws.sh webui-stop         Stop Open WebUI; chat starts it again
   bash scripts/aiws.sh backup            Back up Open WebUI data and the env file
   bash scripts/aiws.sh restore-test DIR   Test a backup in a temporary volume
   bash scripts/aiws.sh restore DIR [--replace]  Restore a backup into Open WebUI
@@ -531,6 +532,10 @@ case "${1:-help}" in
     compose up -d
     wait_ready
     echo "Open WebUI (local only): http://localhost:$(webui_port)"
+    ;;
+  webui-stop)
+    require_docker; require_env
+    compose stop open-webui
     ;;
   ml)
     require_docker; require_env

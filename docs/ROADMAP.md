@@ -52,7 +52,7 @@ Exit: status and safe controls from a phone, protected by login, with no data-de
 - [x] Agreed screen design
 - [x] Read-only status on loopback: GPU, memory, services, loaded model, last backup
 - [x] Panel login, then tailnet-only access
-- [ ] Fixed controls: start, stop, chat and ML modes, unload, backup
+- [x] Fixed controls: start, stop, chat and ML modes, unload, backup
 - [x] Automatic start after Windows sign-in
 
 ## v0.4 — GPU coordination

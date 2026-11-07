@@ -7,6 +7,7 @@ Versions follow the stages in `docs/ROADMAP.md`. No version has been published y
 ### Added
 - Read-only status panel, with an optional systemd service that starts with Ubuntu
 - Panel password login and tailnet-only publishing with `setup-remote.ps1 -Panel`
+- Panel controls for modes, Ollama, Open WebUI, unload and backup, plus `aiws webui-stop`
 - Encrypted `backup-export` and `backup-import` commands
 - Secret scan of full Git history in CI
 - Security policy, threat model and third-party license notes

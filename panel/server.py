@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only status panel for Home AI Workstation. Uses the standard library only.
+"""Status and control panel for Home AI Workstation. Uses the standard library only.
 
 It listens on 127.0.0.1. Once a password is set, every visitor must sign in, including
-local ones, because Tailscale Serve also connects from 127.0.0.1. It changes nothing and
-never reads the env file. Start it with:
+local ones, because Tailscale Serve also connects from 127.0.0.1. Controls exist only
+with a password. They run a fixed list of aiws commands, one at a time, and no request
+text ever reaches a command. The panel never reads the env file. Start it with:
 
     bash scripts/aiws.sh panel
 """
@@ -11,6 +12,7 @@ import argparse
 import http.cookies
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -29,6 +31,15 @@ LOCAL_HOSTS = {'127.0.0.1', 'localhost'}
 COOKIE_NAME = 'aiws_panel'
 MAX_BODY_BYTES = 4096
 CACHE_SECONDS = 2
+ACTION_TIMEOUT_SECONDS = 600
+MODEL_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$')
+# The only commands the panel can run. Nothing here deletes or restores data.
+ACTIONS = {
+    'chat': [['chat']],
+    'ml': [['ml']],
+    'backup': [['backup']],
+    'webui_stop': [['webui-stop']],
+}
 TAILSCALE = '/mnt/c/Program Files/Tailscale/tailscale.exe'
 NVIDIA_SMI_FALLBACK = '/usr/lib/wsl/lib/nvidia-smi'
 SECURITY_HEADERS = {
@@ -202,6 +213,57 @@ def snapshot(config):
     }
 
 
+def unload_commands(models):
+    """Build unload commands from what Ollama reports, never from a request."""
+    return [['unload', model['name']] for model in models if MODEL_NAME.match(model.get('name', ''))]
+
+
+def run_aiws(arguments):
+    """Run one aiws command and return its exit code. Output is not exposed."""
+    try:
+        result = subprocess.run(
+            ['bash', 'scripts/aiws.sh', *arguments], cwd=HERE.parent, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=ACTION_TIMEOUT_SECONDS, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 1
+    return result.returncode
+
+
+class Jobs:
+    """Run one action at a time in the background and remember how it ended."""
+
+    def __init__(self, runner=run_aiws, on_finish=lambda: None):
+        self.runner = runner
+        self.on_finish = on_finish
+        self.lock = threading.Lock()
+        self.current = None
+
+    def status(self):
+        with self.lock:
+            return dict(self.current) if self.current else None
+
+    def start(self, action, commands):
+        """Return False when another action is still running."""
+        with self.lock:
+            if self.current and self.current['state'] == 'running':
+                return False
+            self.current = {'action': action, 'state': 'running', 'started': int(time.time())}
+        threading.Thread(target=self.work, args=(commands,), daemon=True).start()
+        return True
+
+    def work(self, commands):
+        state = 'done'
+        for command in commands:
+            if self.runner(command) != 0:
+                state = 'failed'
+                break
+        with self.lock:
+            self.current['state'] = state
+            self.current['finished'] = int(time.time())
+        self.on_finish()
+
+
 class Cache:
     """Keep status work bounded when several browser tabs poll at once."""
 
@@ -219,6 +281,10 @@ class Cache:
                 self.expires = now + CACHE_SECONDS
             return self.value
 
+    def clear(self):
+        with self.lock:
+            self.expires = 0.0
+
 
 def host_name(header):
     return header.rsplit(':', 1)[0].lower() if header else ''
@@ -230,7 +296,7 @@ def host_allowed(header, extra=()):
     return name in LOCAL_HOSTS or name in extra
 
 
-def make_handler(cache, access):
+def make_handler(cache, access, jobs, loaded_models=lambda: []):
     class Handler(BaseHTTPRequestHandler):
         server_version = 'aiws-panel'
         sys_version = ''
@@ -294,7 +360,8 @@ def make_handler(cache, access):
                     self.redirect('/login')
             elif path == '/api/status':
                 if self.signed_in():
-                    status = {**cache.get(), 'login_required': access.required()}
+                    status = {**cache.get(), 'login_required': access.required(),
+                              'controls': access.required(), 'job': jobs.status()}
                     self.respond(200, 'application/json', json.dumps(status).encode())
                 else:
                     self.text(401, 'Sign in required\n')
@@ -335,8 +402,41 @@ def make_handler(cache, access):
             elif path == '/logout':
                 access.logout(self.token())
                 self.redirect('/login', [self.cookie('', 0)])
+            elif path == '/api/action':
+                self.action()
             else:
                 self.text(405, 'Method not allowed\n')
+
+        def action(self):
+            """Controls need a password, a session, this site's page and a known name."""
+            if not access.required():
+                self.text(403, 'Set a panel password first\n')
+            elif not access.valid(self.token()):
+                self.text(401, 'Sign in required\n')
+            elif not self.headers.get('Origin') or self.headers.get('X-AIWS-Action') != '1':
+                self.text(403, 'Forbidden\n')
+            else:
+                self.run_action()
+
+        def run_action(self):
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if length < 0 or length > MAX_BODY_BYTES:
+                    raise ValueError
+                name = json.loads(self.rfile.read(length)).get('action')
+            except (AttributeError, ValueError):
+                self.text(400, 'Bad request\n')
+                return
+            if name == 'unload':
+                commands = unload_commands(loaded_models())
+            else:
+                commands = ACTIONS.get(name) if isinstance(name, str) else None
+            if not commands:
+                self.text(400, 'Unknown action\n')
+            elif jobs.start(name, commands):
+                self.text(202, 'Started\n')
+            else:
+                self.text(409, 'Another action is running\n')
 
         def log_message(self, format, *args):
             return
@@ -356,7 +456,13 @@ def main():
     config = {'ollama_port': args.ollama_port, 'ssh_port': args.ssh_port,
               'project': args.project, 'backup_root': args.backup_root}
     cache = Cache(lambda: snapshot(config))
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(cache, auth.Auth(args.config)))
+    jobs = Jobs(on_finish=cache.clear)
+
+    def loaded_models():
+        return parse_loaded_models(http_json(f'http://127.0.0.1:{args.ollama_port}/api/ps'))
+
+    handler = make_handler(cache, auth.Auth(args.config), jobs, loaded_models)
+    server = ThreadingHTTPServer(('127.0.0.1', args.port), handler)
     print(f'Status panel: http://127.0.0.1:{args.port} (Ctrl+C to stop)', flush=True)
     try:
         server.serve_forever()

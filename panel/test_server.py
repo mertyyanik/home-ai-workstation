@@ -213,6 +213,56 @@ class ToolTests(unittest.TestCase):
             self.assertNotEqual(self.tool(path, 'allow', 'bad host/x').returncode, 0)
 
 
+class JobTests(unittest.TestCase):
+    def wait(self, jobs):
+        for _ in range(200):
+            status = jobs.status()
+            if status and status['state'] != 'running':
+                return status
+            time.sleep(0.01)
+        self.fail('job did not finish')
+
+    def test_success_runs_commands_in_order(self):
+        calls = []
+        jobs = server.Jobs(runner=lambda command: calls.append(command) or 0)
+        self.assertTrue(jobs.start('unload', [['unload', 'a'], ['unload', 'b']]))
+        self.assertEqual(self.wait(jobs)['state'], 'done')
+        self.assertEqual(calls, [['unload', 'a'], ['unload', 'b']])
+
+    def test_failure_stops_and_reports(self):
+        calls = []
+        jobs = server.Jobs(runner=lambda command: calls.append(command) or 3)
+        jobs.start('unload', [['one'], ['two']])
+        self.assertEqual(self.wait(jobs)['state'], 'failed')
+        self.assertEqual(calls, [['one']])
+
+    def test_one_action_at_a_time(self):
+        release = threading.Event()
+        jobs = server.Jobs(runner=lambda command: release.wait(5) and 0)
+        self.assertTrue(jobs.start('ml', [['ml']]))
+        self.assertFalse(jobs.start('chat', [['chat']]))
+        release.set()
+        self.wait(jobs)
+        self.assertTrue(jobs.start('chat', [['chat']]))
+        self.wait(jobs)
+
+    def test_finish_callback(self):
+        finished = threading.Event()
+        jobs = server.Jobs(runner=lambda command: 0, on_finish=finished.set)
+        jobs.start('ml', [['ml']])
+        self.assertTrue(finished.wait(2))
+
+    def test_action_list_is_fixed_and_safe(self):
+        self.assertEqual(set(server.ACTIONS), {'chat', 'ml', 'backup', 'webui_stop'})
+        for commands in server.ACTIONS.values():
+            for command in commands:
+                self.assertNotIn(command[0], ('down', 'restore', 'init', 'install', 'pull'))
+
+    def test_unload_names_come_from_ollama_and_are_checked(self):
+        models = [{'name': 'qwen3.5:4b'}, {'name': 'a; rm -rf /'}, {'name': '--bad'}, {}]
+        self.assertEqual(server.unload_commands(models), [['unload', 'qwen3.5:4b']])
+
+
 class HttpBase(unittest.TestCase):
     @classmethod
     def start(cls, config):
@@ -222,7 +272,19 @@ class HttpBase(unittest.TestCase):
         status = {'time': 1, 'services': {'ollama': 'running'}}
         cache = server.Cache(lambda: status)
         cls.access = auth.Auth(cls.config)
-        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), server.make_handler(cache, cls.access))
+        cls.calls = []
+        cls.gate = threading.Event()
+        cls.gate.set()
+
+        def runner(command):
+            cls.calls.append(command)
+            cls.gate.wait(5)
+            return 0
+
+        cls.jobs = server.Jobs(runner=runner)
+        cls.models = [{'name': 'qwen3.5:4b'}]
+        handler = server.make_handler(cache, cls.access, cls.jobs, lambda: cls.models)
+        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -330,6 +392,102 @@ class LoginHttpTests(HttpBase):
     def test_bad_cookie_is_ignored(self):
         for value in ('aiws_panel=fake', 'broken;;;', 'a"b=c'):
             self.assertEqual(self.request('/api/status', headers=[('Cookie', value)])[0].status, 401)
+
+
+class ActionHttpTests(HttpBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.start({'password': auth.hash_password(PASSWORD), 'allowed_hosts': ['panel.example']})
+
+    def setUp(self):
+        for _ in range(300):
+            job = self.jobs.status()
+            if not job or job['state'] != 'running':
+                break
+            time.sleep(0.01)
+        self.calls.clear()
+        self.gate.set()
+        self.access.failures = 0
+        self.access.locked_until = 0.0
+        body = urllib.parse.urlencode({'password': PASSWORD}).encode()
+        response, _ = self.request('/login', 'POST', body=body)
+        self.session = ('Cookie', response.getheader('Set-Cookie').split(';')[0])
+
+    def act(self, payload, session=True, origin='http://127.0.0.1', header='1', host='127.0.0.1'):
+        headers = [('Content-Type', 'application/json')]
+        if session:
+            headers.append(self.session)
+        if origin:
+            headers.append(('Origin', origin))
+        if header:
+            headers.append(('X-AIWS-Action', header))
+        body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+        return self.request('/api/action', 'POST', host, headers, body)[0].status
+
+    def settle(self):
+        for _ in range(300):
+            job = self.jobs.status()
+            if job and job['state'] != 'running':
+                return job
+            time.sleep(0.01)
+        self.fail('job did not finish')
+
+    def test_each_action_runs_its_fixed_command(self):
+        expected = {'ml': ['ml'], 'chat': ['chat'], 'backup': ['backup'], 'webui_stop': ['webui-stop']}
+        for action, command in expected.items():
+            self.calls.clear()
+            self.assertEqual(self.act({'action': action}), 202, action)
+            self.settle()
+            self.assertEqual(self.calls, [command])
+
+    def test_unload_uses_the_loaded_model(self):
+        self.assertEqual(self.act({'action': 'unload', 'model': 'evil; reboot'}), 202)
+        self.settle()
+        self.assertEqual(self.calls, [['unload', 'qwen3.5:4b']])
+
+    def test_needs_a_session(self):
+        self.assertEqual(self.act({'action': 'ml'}, session=False), 401)
+        self.assertEqual(self.calls, [])
+
+    def test_needs_origin_and_custom_header(self):
+        self.assertEqual(self.act({'action': 'ml'}, origin=None), 403)
+        self.assertEqual(self.act({'action': 'ml'}, header=None), 403)
+        self.assertEqual(self.act({'action': 'ml'}, origin='https://evil.example'), 403)
+        self.assertEqual(self.calls, [])
+
+    def test_unknown_and_broken_requests(self):
+        for payload in ({'action': 'down'}, {'action': 'restore'}, {'action': ['ml']}, {}, [], b'{broken'):
+            self.assertEqual(self.act(payload), 400, payload)
+        self.assertEqual(self.calls, [])
+
+    def test_one_action_at_a_time(self):
+        self.gate.clear()
+        self.assertEqual(self.act({'action': 'ml'}), 202)
+        self.assertEqual(self.act({'action': 'chat'}), 409)
+        self.gate.set()
+        self.settle()
+
+    def test_status_reports_job_and_controls(self):
+        self.act({'action': 'backup'})
+        self.settle()
+        _, body = self.request('/api/status', headers=[self.session])
+        data = json.loads(body)
+        self.assertTrue(data['controls'])
+        self.assertEqual(data['job']['action'], 'backup')
+        self.assertEqual(data['job']['state'], 'done')
+
+
+class NoPasswordActionTests(HttpBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.start({})
+
+    def test_controls_are_off_without_a_password(self):
+        headers = [('Origin', 'http://127.0.0.1'), ('X-AIWS-Action', '1')]
+        response, _ = self.request('/api/action', 'POST', headers=headers, body=b'{"action":"ml"}')
+        self.assertEqual(response.status, 403)
+        self.assertEqual(self.calls, [])
+        self.assertFalse(json.loads(self.request('/api/status')[1])['controls'])
 
 
 class NoPasswordHostTests(HttpBase):

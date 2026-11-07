@@ -80,16 +80,18 @@ to change that limit.
 
 ## Status panel
 
-A small read-only page shows GPU, memory, disk, services, the loaded model and the last
-backup. Install it once in Ubuntu as a service, so it starts with Ubuntu, then open
-`http://localhost:8088` in Windows:
+A small page shows GPU, memory, disk, services, the loaded model and the last backup. With a
+password set, it also switches between chat and ML modes, starts and stops Ollama and Open
+WebUI, unloads the model and takes a backup. It cannot delete or restore anything, and it
+runs only a fixed list of commands, one at a time. Install it once in Ubuntu as a service, so
+it starts with Ubuntu, then open `http://localhost:8088` in Windows:
 
 ```bash
 sudo bash scripts/setup-panel-service.sh
 ```
 
 To run it only for now, use `bash scripts/aiws.sh panel`. Set `AIWS_PANEL_PORT` to change
-the port. It listens on `127.0.0.1` and can change nothing.
+the port. It listens on `127.0.0.1`. Without a password it is read-only.
 
 Set a password before you use it from other devices. After that, every visitor must sign
 in, including on this PC. Then publish it to your own Tailscale network from Windows
