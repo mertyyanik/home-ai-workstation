@@ -6,7 +6,8 @@ Kullanıcıyla Türkçe iletişim kur. Önce bu dosyayı, README.md ve varsa
 ## Scope and authorization
 
 - v0.1: Windows + WSL2 Ubuntu + Docker Desktop + NVIDIA, Ollama ve Open WebUI.
-- Yalnızca localhost: WebUI `127.0.0.1:3000`; Ollama host portu yayımlanmaz.
+- Yalnızca localhost: WebUI `127.0.0.1:3000`; Ollama `127.0.0.1:11434` (VS Code için,
+  kullanıcı kararı 2026-11-07). Ollama kimlik doğrulamasızdır; LAN'a veya Tailscale'e açma.
 - Kullanıcı açıkça istemedikçe Python/ML/Jupyter, Codex servis bağlantısı,
   Tailscale, uzaktan erişim veya başka fazlara geçme.
 - GitHub'a push/publish, remote repo, remote veya PR oluşturma. Yerel çalışma.

@@ -41,6 +41,7 @@ Exit: authorized remote use from outside home, the correct WSL context, reboot t
 - [x] VS Code Remote-SSH from MacBook into WSL Ubuntu, from outside the home network
 - [x] Remote notebooks on the workstation GPU
 - [x] Reboot test: services return on their own after a manual Windows sign-in
+- [ ] Local Ollama models in VS Code over Remote-SSH
 - [ ] Optional unattended recovery after a Windows restart
 - [x] Claude Code and Codex desktop workflows reaching WSL, driven from a phone
 

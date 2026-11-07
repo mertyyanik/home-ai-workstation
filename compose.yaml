@@ -15,10 +15,13 @@ services:
       OLLAMA_KEEP_ALIVE: "5m"
       OLLAMA_MAX_LOADED_MODELS: "1"
       OLLAMA_NUM_PARALLEL: "1"
-      OLLAMA_CONTEXT_LENGTH: "8192"
+      OLLAMA_CONTEXT_LENGTH: "16384"
     volumes:
       - ollama_data:/root/.ollama
-    # Ollama API is only available to containers on this private network.
+    # Loopback only, for local editor integrations. Ollama has no authentication,
+    # so never bind this to 0.0.0.0 or forward it through Tailscale.
+    ports:
+      - "127.0.0.1:11434:11434"
     # The NVIDIA device reservation is supported in modern Docker Compose.
     deploy:
       resources:

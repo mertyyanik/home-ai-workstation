@@ -20,7 +20,7 @@ training run (see `ml/README.md`), also passed.
 - Persistent Docker volumes for models and conversations
 - Auto-unload of idle Ollama model after 5 minutes (`OLLAMA_KEEP_ALIVE`)
 - CLI to diagnose, start, pull models, monitor and stop
-- Local-only web UI port; Ollama API not published on the host
+- Web UI and Ollama API bound to localhost only
 
 **Pending validation / future work:** GPU job scheduling, automatic PC
 sleep/wake, Codex remote agent, MLflow, Tailscale, Colab remote kernel.
@@ -149,7 +149,7 @@ the env file; an existing env file is never replaced.
 | Ollama model missing from UI | `bash scripts/aiws.sh models`, `bash scripts/aiws.sh logs` |
 | Out of VRAM | `unload`; smaller model; shorten context; don't train alongside LLM |
 | WSL consumes too much RAM | Review optional `.wslconfig.example`, consider upgrading to 32 GB |
-| Model forgets earlier text in long chats | Prompts over the 8192-token context limit (`OLLAMA_CONTEXT_LENGTH`) are truncated silently; look for `truncating input prompt` in `logs` |
+| Model forgets earlier text in long chats | Prompts over the 16384-token context limit (`OLLAMA_CONTEXT_LENGTH`) are truncated silently; look for `truncating input prompt` in `logs` |
 | `pull` fails with `no such host` | Can be temporary; run the same `pull` again, it resumes |
 | First answer takes over a minute | Expected on the first request after the Ollama container is created; later loads took seconds in testing |
 | `wsl` errors 1618/1601, Docker "unable to start" | A WSL update may be installing; wait for it to finish, services restart on their own |
@@ -193,6 +193,13 @@ Host aiws
 ```
 
 Then `ssh aiws` opens Ubuntu, and VS Code Remote-SSH can open your Linux projects.
+
+To use local models in VS Code, install the
+[Ollama extension](https://docs.ollama.com/integrations/vscode) in the Remote-SSH window
+and pick a model under **Ollama** in Chat. Ollama listens on `127.0.0.1:11434` only.
+`qwen2.5-coder:7b` passed a small coding test but did not return structured tool calls,
+and `qwen3:4b` did. The 16K context is small for large projects; 32K did not fit fully
+on an 8 GB GPU in testing.
 
 **Limits:** the PC must be on and awake. After a Windows restart, Docker Desktop and
 Ubuntu start only once a user signs in. Tailscale does not wake a sleeping PC.

@@ -2,7 +2,9 @@
 
 - Open WebUI is initially published **only** at `127.0.0.1` on Windows. Do not
   change it to `0.0.0.0` or port-forward it through your home router.
-- Ollama's port 11434 is **not** published; it is reachable only inside Docker.
+- Ollama's port 11434 is published on `127.0.0.1` only, for local editor tools.
+  Ollama has no authentication: any program on this PC can use it, so do not bind
+  it to `0.0.0.0` or forward it through Tailscale.
 - `WEBUI_SECRET_KEY` is generated locally by `init` into
   `~/.config/home-ai-workstation/aiws.env` on the WSL filesystem (mode `600`),
   outside the project folder, Git and cloud-synced folders. `AIWS_ENV_FILE`

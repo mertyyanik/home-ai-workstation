@@ -57,7 +57,7 @@ AIWS_BACKUP_DIR sets the backup folder
 Env file: $AIWS_ENV_FILE if set; otherwise an existing repository .env;
 otherwise ~/.config/home-ai-workstation/aiws.env (outside the project folder).
 
-Ollama API is not published on the host. Open WebUI is bound to localhost only.
+Open WebUI and the Ollama API are bound to localhost only.
 EOF
 }
 
