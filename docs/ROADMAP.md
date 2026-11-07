@@ -72,6 +72,6 @@ Exit: a clean Windows machine installs from GitHub with documented prerequisites
 
 - [ ] One-command Windows installer; users install Docker Desktop, WSL and the NVIDIA driver
 - [ ] Clean-install test on an empty Ubuntu distribution
-- [ ] Move Open WebUI from the `main` build to a tested release
-- [ ] Pin the GPU test images used by `gpu-test`
+- [x] Pin Open WebUI to a tested release, with an upgrade and rollback guide
+- [x] Pin the GPU test images used by `gpu-test`
 - [ ] License review, secret scan, clean examples and documentation

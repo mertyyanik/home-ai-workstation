@@ -39,5 +39,5 @@ Never test a restore or a volume change against data you care about. Use a separ
 
 ## Changing image versions
 
-Take a backup first. Pin the new digest, repeat the hardware tests, and update
-`CHANGELOG.md`. A database migration can prevent a simple rollback to an older image.
+Follow `docs/UPGRADE.md`, repeat the hardware tests, and update `CHANGELOG.md`. A
+database migration can prevent a simple rollback to an older image.

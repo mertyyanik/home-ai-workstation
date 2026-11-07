@@ -42,5 +42,4 @@ ML projects                Open WebUI        Ollama (GPU)
 - Remote access needs the PC on and a signed-in Windows session.
 - Chat and heavy ML work take turns on the GPU; this is a manual switch.
 - No Colab local runtime yet.
-- Open WebUI is pinned to a tested `main` build; move to a tested release before
-  publication.
+- Images are pinned to tested digests; `docs/UPGRADE.md` covers changing them.

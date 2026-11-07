@@ -250,6 +250,9 @@ check "pull-recommended pulls both models" 'grep -q "ollama pull qwen3:4b" "$FAK
 : > "$FAKE_DOCKER_LOG"
 AIWS_MODELS='one:1b two:2b' bash "$A" pull-recommended >/dev/null 2>&1
 check "AIWS_MODELS overrides the list" '[[ "$(grep -c "ollama pull" "$FAKE_DOCKER_LOG")" == 2 ]] && grep -q "ollama pull two:2b" "$FAKE_DOCKER_LOG" && ! grep -q "qwen3" "$FAKE_DOCKER_LOG"'
+: > "$FAKE_DOCKER_LOG"
+bash "$A" gpu-test >/dev/null 2>&1
+check "gpu-test images are pinned" '[[ "$(grep -c "run --rm --gpus all .*@sha256:" "$FAKE_DOCKER_LOG")" == 2 ]]'
 out="$(bash "$A" version 2>&1)"; rc=$?
 check "version prints VERSION" '[[ $rc -eq 0 && "$out" == "$(cat "$SRC/VERSION")" ]]'
 

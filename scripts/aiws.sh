@@ -21,6 +21,8 @@ fi
 # Backups hold the secret, so they default to a per-user folder outside the project.
 BACKUP_ROOT="${AIWS_BACKUP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/home-ai-workstation/backups}"
 WEBUI_DATA=/app/backend/data
+CUDA_TEST_IMAGE='nvidia/cuda:12.4.1-base-ubuntu22.04@sha256:0f6bfcbf267e65123bcc2287e2153dedfc0f24772fb5ce84afe16ac4b2fada95'
+NBODY_TEST_IMAGE='nvcr.io/nvidia/k8s/cuda-sample:nbody@sha256:59261e419d6d48a772aad5bb213f9f1588fcdb042b115ceb7166c89a51f03363'
 
 help() {
   cat <<'EOF'
@@ -384,9 +386,9 @@ case "${1:-help}" in
   gpu-test)
     require_docker
     echo 'Testing GPU passthrough with CUDA 12.4 test image...'
-    docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+    docker run --rm --gpus all "$CUDA_TEST_IMAGE" nvidia-smi
     echo 'Running the Docker-documented CUDA nbody compute test...'
-    docker run --rm --gpus all nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark
+    docker run --rm --gpus all "$NBODY_TEST_IMAGE" nbody -gpu -benchmark
     ;;
   up|chat)
     require_docker; require_env

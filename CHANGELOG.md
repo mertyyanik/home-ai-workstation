@@ -10,10 +10,14 @@ Versions follow the stages in `docs/ROADMAP.md`. No version has been published y
 - `pull-recommended` and `version` commands
 - Project rules template for ML work
 - ShellCheck and PowerShell analysis in CI
+- `docs/UPGRADE.md` for testing, applying and rolling back image changes
 
 ### Changed
 - Ollama API published on `127.0.0.1:11434` for local editor tools
 - Ollama context length raised to 16384 after measuring full GPU fit on 8 GB
+- Open WebUI pinned to the `v0.13.0` release image, built from the same source commit
+  as the earlier pin
+- `gpu-test` images pinned to digests
 
 ## 0.2.0
 

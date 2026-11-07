@@ -203,6 +203,7 @@ start only once a user signs in. Tailscale does not wake a sleeping PC.
 - `docs/ARCHITECTURE.md`: design decisions and known limits
 - `docs/ROADMAP.md`: stages and what is verified
 - `docs/SECURITY.md`: access, secrets and backups
+- `docs/UPGRADE.md`: changing image versions safely
 - `CHANGELOG.md`: changes by version
 - `CONTRIBUTING.md`: tests and hardware checks
 - `AGENTS.md` and `CLAUDE.md`: rules for coding agents working on this repository
