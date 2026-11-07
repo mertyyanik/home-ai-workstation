@@ -49,6 +49,8 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh backup            Back up Open WebUI data and the env file
   bash scripts/aiws.sh restore-test DIR   Test a backup in a temporary volume
   bash scripts/aiws.sh restore DIR [--replace]  Restore a backup into Open WebUI
+  bash scripts/aiws.sh backup-export DIR FILE  Encrypt a backup into one file
+  bash scripts/aiws.sh backup-import FILE      Decrypt an exported backup
   bash scripts/aiws.sh version            Show the project version
 
 backup briefly stops Open WebUI. Ollama models are not included; models.txt lists
@@ -60,6 +62,8 @@ AIWS_READY_TIMEOUT sets the readiness wait in seconds (default: 180).
 AIWS_BACKUP_DIR sets the backup folder
 (default: ~/.local/share/home-ai-workstation/backups).
 AIWS_MODELS sets the space-separated list used by pull-recommended.
+backup-export and backup-import ask for a passphrase. If you lose it, the file cannot
+be recovered. AIWS_BACKUP_PASSPHRASE_FILE reads it from a file for automation.
 
 Env file: $AIWS_ENV_FILE if set; otherwise an existing repository .env;
 otherwise ~/.config/home-ai-workstation/aiws.env (outside the project folder).
@@ -363,6 +367,67 @@ restore() (
   echo "Restored Open WebUI data from: $directory"
 )
 
+# Print nothing; fill the array named GPG with the shared gpg command.
+gpg_command() {
+  command -v gpg >/dev/null 2>&1 || {
+    echo 'ERROR: gpg is missing. Run: sudo apt install gnupg' >&2
+    exit 1
+  }
+  GPG=(gpg --quiet --pinentry-mode loopback)
+  if [[ -n "${AIWS_BACKUP_PASSPHRASE_FILE:-}" ]]; then
+    GPG+=(--batch --passphrase-file "$AIWS_BACKUP_PASSPHRASE_FILE")
+  fi
+}
+
+# Encrypt a verified backup into one file that is safe to store on another disk.
+backup_export() (
+  umask 077
+  local directory output="$2" partial
+  directory="$(realpath -- "$1")"
+  verify_backup "$directory"
+  if [[ -e "$output" ]]; then
+    echo "ERROR: $output already exists; nothing was changed." >&2
+    exit 1
+  fi
+  gpg_command
+  partial="$output.partial.$$"
+  trap 'rm -f -- "$partial"' EXIT
+  tar -C "$(dirname -- "$directory")" -cf - "$(basename -- "$directory")" \
+    | "${GPG[@]}" --symmetric --cipher-algo AES256 --s2k-mode 3 --s2k-digest-algo SHA512 \
+        --s2k-count 65011712 --output "$partial"
+  mv -n -- "$partial" "$output"
+  echo "Encrypted backup created: $output"
+  echo 'Keep the passphrase safe. Without it this file cannot be recovered.'
+)
+
+# Decrypt an exported backup into the backup folder, then verify it.
+backup_import() (
+  umask 077
+  local file="$1" temporary name
+  if [[ ! -f "$file" ]]; then
+    echo "ERROR: File not found: $file" >&2
+    exit 1
+  fi
+  gpg_command
+  mkdir -p -- "$BACKUP_ROOT"
+  temporary="$(mktemp -d "$BACKUP_ROOT/.incomplete.XXXXXX")"
+  trap 'rm -rf -- "$temporary"' EXIT
+  "${GPG[@]}" --decrypt "$file" | tar -C "$temporary" --no-same-owner -xf -
+  name="$(find "$temporary" -mindepth 1 -maxdepth 1 -type d -name 'aiws-backup-*' -printf '%f\n')"
+  if [[ -z "$name" || "$name" == *$'\n'* ]]; then
+    echo 'ERROR: This file does not contain one aiws backup.' >&2
+    exit 1
+  fi
+  verify_backup "$temporary/$name"
+  if [[ -e "$BACKUP_ROOT/$name" ]]; then
+    echo "ERROR: $BACKUP_ROOT/$name already exists; nothing was changed." >&2
+    exit 1
+  fi
+  mv -T -- "$temporary/$name" "$BACKUP_ROOT/$name"
+  echo "Backup imported: $BACKUP_ROOT/$name"
+  echo 'Check it with: bash scripts/aiws.sh restore-test BACKUP_DIR'
+)
+
 install() {
   local option skip_gpu=0 skip_models=0
   local self=(bash "$REPO_DIR/scripts/aiws.sh")
@@ -541,6 +606,14 @@ case "${1:-help}" in
   backup)
     require_docker; require_env
     backup
+    ;;
+  backup-export)
+    if [[ -z "${2:-}" || -z "${3:-}" ]]; then echo 'Usage: backup-export BACKUP_DIR FILE' >&2; exit 2; fi
+    backup_export "$2" "$3"
+    ;;
+  backup-import)
+    if [[ -z "${2:-}" ]]; then echo 'Usage: backup-import FILE' >&2; exit 2; fi
+    backup_import "$2"
     ;;
   restore-test)
     if [[ -z "${2:-}" ]]; then echo 'Usage: restore-test BACKUP_DIR' >&2; exit 2; fi

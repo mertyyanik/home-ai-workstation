@@ -26,6 +26,7 @@ Exit: first chat, GPU inference, VRAM unload and data persistence verified.
 Exit: restore verified; real CUDA work, a short training run and a checkpoint.
 
 - [x] Backup and restore commands, with a restore test on a separate volume
+- [x] Encrypted backup export and import commands
 - [ ] Encrypted backup copy on another disk
 - [x] Per-project WSL Python environment with a compatible CUDA PyTorch wheel
 - [x] Real GPU calculation, short training run and verified checkpoint
@@ -76,4 +77,5 @@ Exit: a clean Windows machine installs from GitHub with documented prerequisites
 - [ ] Install directly from GitHub after publication
 - [x] Pin Open WebUI to a tested release, with an upgrade and rollback guide
 - [x] Pin the GPU test images used by `gpu-test`
-- [ ] License review, secret scan, clean examples and documentation
+- [x] License review, automated secret scan and security policy
+- [x] Generic public agent rules, with personal notes kept out of Git

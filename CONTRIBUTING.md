@@ -15,7 +15,8 @@ python3 -m py_compile scripts/check-ml.py ml/smoke-train.py
 WEBUI_SECRET_KEY=ci_dummy_not_a_real_secret docker compose -f compose.yaml config --quiet
 ```
 
-Run ShellCheck if you have it. CI runs it, along with PowerShell analysis:
+Run ShellCheck if you have it. CI runs it, along with PowerShell analysis and a Gitleaks
+scan of the full Git history:
 
 ```bash
 shellcheck scripts/*.sh

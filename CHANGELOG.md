@@ -5,6 +5,9 @@ Versions follow the stages in `docs/ROADMAP.md`. No version has been published y
 ## 0.3.0-dev
 
 ### Added
+- Encrypted `backup-export` and `backup-import` commands
+- Secret scan of full Git history in CI
+- Security policy, threat model and third-party license notes
 - `scripts/install.ps1` and `aiws install` for one-command, repeatable setup
 - `scripts/setup-remote.ps1` for guided Tailscale publishing
 - Windows checks for free space and Docker access from Ubuntu

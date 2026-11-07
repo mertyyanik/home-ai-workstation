@@ -29,4 +29,6 @@ mlruns/
 *.key
 .claude/settings.local.json
 .claude/worktrees/
+AGENTS.local.md
+CLAUDE.local.md
 .envrc

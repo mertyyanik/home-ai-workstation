@@ -297,5 +297,39 @@ bash "$A" init >/dev/null 2>&1
 out="$(FAKE_VOLUME_RC=0 bash "$A" install --skip-gpu-test --skip-models 2>&1)"; rc=$?
 check "existing data with env continues" '[[ $rc -eq 0 ]]'
 
+# 17. Encrypted export and import with real gpg and throwaway values
+R="$T/repo7"; new_repo "$R"; export HOME="$T/home7"; mkdir -p "$HOME"; chmod 700 "$HOME"
+A="$R/scripts/aiws.sh"; B="$HOME/.local/share/home-ai-workstation/backups"
+bash "$A" init >/dev/null 2>&1
+out="$(bash "$A" backup 2>&1)"
+D="$(sed -n 's/^Backup created: //p' <<<"$out")"
+sum1="$(cd "$D" && sha256sum aiws.env open-webui-data.tar.gz)"
+printf 'throwaway passphrase\n' > "$T/pass"; printf 'wrong passphrase\n' > "$T/badpass"
+X="$T/export/backup.gpg"; mkdir -p "$T/export"
+AIWS_BACKUP_PASSPHRASE_FILE="$T/pass" bash "$A" backup-export "$D/" "$X" >/dev/null 2>&1; rc=$?
+check "export succeeds" '[[ $rc -eq 0 && -s "$X" ]]'
+check "export is private" '[[ "$(stat -c %a "$X")" == 600 ]]'
+check "export leaves no partial file" '[[ "$(ls "$T/export" | wc -l)" == 1 ]]'
+check "export hides file names and secret" '! grep -qa "WEBUI_SECRET_KEY\|aiws.env\|aiws-backup" "$X"'
+AIWS_BACKUP_PASSPHRASE_FILE="$T/pass" bash "$A" backup-export "$D" "$X" >/dev/null 2>&1; rc=$?
+check "export refuses to overwrite" '[[ $rc -ne 0 ]]'
+BAD="$T/bad-backup"; cp -r "$D" "$BAD"; echo x >> "$BAD/open-webui-data.tar.gz"
+AIWS_BACKUP_PASSPHRASE_FILE="$T/pass" bash "$A" backup-export "$BAD" "$T/export/bad.gpg" >/dev/null 2>&1; rc=$?
+check "export refuses a damaged backup" '[[ $rc -ne 0 && ! -e "$T/export/bad.gpg" ]]'
+n="$(ls -A "$B" | wc -l)"
+AIWS_BACKUP_PASSPHRASE_FILE="$T/badpass" bash "$A" backup-import "$X" >/dev/null 2>&1; rc=$?
+check "wrong passphrase fails" '[[ $rc -ne 0 ]]'
+check "failed import leaves nothing" '[[ "$(ls -A "$B" | wc -l)" == "$n" ]]'
+AIWS_BACKUP_PASSPHRASE_FILE="$T/pass" bash "$A" backup-import "$X" >/dev/null 2>&1; rc=$?
+check "import refuses an existing backup" '[[ $rc -ne 0 ]]'
+mv "$D" "$T/original-backup"
+out="$(AIWS_BACKUP_PASSPHRASE_FILE="$T/pass" bash "$A" backup-import "$X" 2>&1)"; rc=$?
+check "import succeeds" '[[ $rc -eq 0 && -d "$D" ]]'
+check "imported files are identical" '[[ "$(cd "$D" && sha256sum aiws.env open-webui-data.tar.gz)" == "$sum1" ]]'
+check "imported backup passes restore-test" 'bash "$A" restore-test "$D" >/dev/null 2>&1'
+check "import leaves no temporary folder" '[[ -z "$(ls -A "$B" | grep incomplete)" ]]'
+bash "$A" backup-export >/dev/null 2>&1; rc=$?
+check "export needs arguments" '[[ $rc -eq 2 ]]'
+
 echo "---- $pass passed, $fail failed"
 [[ $fail -eq 0 ]]

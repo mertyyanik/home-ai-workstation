@@ -116,9 +116,15 @@ bash scripts/aiws.sh restore BACKUP_DIR      # Into an empty volume or a new mac
 ```
 
 `backup` saves accounts, chats, settings and the env file to
-`~/.local/share/home-ai-workstation/backups`, or to `AIWS_BACKUP_DIR`. This is not a copy
-on another disk. To survive a disk failure, copy backups elsewhere and encrypt them
-first, because they contain the secret.
+`~/.local/share/home-ai-workstation/backups`, or to `AIWS_BACKUP_DIR`. These stay on the
+same disk, unencrypted, and contain the secret. To survive a disk failure, export an
+encrypted copy to another disk, such as drive `D:`. It asks for a passphrase, and a lost
+passphrase cannot be recovered:
+
+```bash
+bash scripts/aiws.sh backup-export BACKUP_DIR /mnt/d/aiws-backup.gpg
+bash scripts/aiws.sh backup-import /mnt/d/aiws-backup.gpg
+```
 
 Ollama models are not included; `models.txt` lists them. Open WebUI's embedding and
 speech models are also left out and download again, about 1 GB in testing.
@@ -190,9 +196,11 @@ start only once a user signs in. Tailscale does not wake a sleeping PC.
 - `docs/ROADMAP.md`: stages and what is verified
 - `docs/SECURITY.md`: access, secrets and backups
 - `docs/UPGRADE.md`: changing image versions safely
+- `docs/THIRD_PARTY.md`: third-party software and licenses
 - `CHANGELOG.md`: changes by version
 - `CONTRIBUTING.md`: tests and hardware checks
-- `AGENTS.md` and `CLAUDE.md`: rules for coding agents working on this repository
+- `AGENTS.md` and `CLAUDE.md`: rules for coding agents working on this repository; optional
+  local notes go in the ignored `AGENTS.local.md` and `CLAUDE.local.md`
 
 ## Source links
 
