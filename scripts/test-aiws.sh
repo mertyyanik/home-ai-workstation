@@ -22,6 +22,8 @@ case "$*" in
   *"ps -q --status running"*) [[ "${FAKE_RUNNING:-1}" == 1 ]] && echo cid ;;
   *"ps -q"*) echo cid ;;
   inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
+  *"--gpus all"*) [[ "${FAKE_GPU_FAIL:-0}" == 1 ]] && exit 1 ;;
+  "volume inspect "*) exit "${FAKE_VOLUME_RC:-1}" ;;
   *"df -Pk"*) printf 'Filesystem 1024-blocks Used Available Capacity Mounted\n/dev/x 100 1 %s 1%% /\n' "${FAKE_FREE_KB:-104857600}" ;;
   *"config --images"*) echo 'ollama/ollama:test'; echo 'ghcr.io/open-webui/open-webui:test' ;;
   *"--entrypoint tar open-webui -C"*)
@@ -255,6 +257,45 @@ bash "$A" gpu-test >/dev/null 2>&1
 check "gpu-test images are pinned" '[[ "$(grep -c "run --rm --gpus all .*@sha256:" "$FAKE_DOCKER_LOG")" == 2 ]]'
 out="$(bash "$A" version 2>&1)"; rc=$?
 check "version prints VERSION" '[[ $rc -eq 0 && "$out" == "$(cat "$SRC/VERSION")" ]]'
+
+# 15. install from a clean home, then again
+R="$T/repo5"; new_repo "$R"; export HOME="$T/home5"; mkdir -p "$HOME"
+A="$R/scripts/aiws.sh"; E="$HOME/.config/home-ai-workstation/aiws.env"
+: > "$FAKE_DOCKER_LOG"
+out="$(bash "$A" install 2>&1)"; rc=$?
+check "install succeeds on a clean home" '[[ $rc -eq 0 ]]'
+check "install creates the env file" '[[ -f "$E" && "$(stat -c %a "$E")" == 600 ]]'
+check "install runs the GPU test" '[[ "$(grep -c -- "--gpus all" "$FAKE_DOCKER_LOG")" == 2 ]]'
+check "install starts services" 'grep -q "up -d" "$FAKE_DOCKER_LOG"'
+check "install pulls models" 'grep -q "ollama pull qwen3:4b" "$FAKE_DOCKER_LOG"'
+check "install explains the next step" 'grep -q "create the first account" <<<"$out"'
+check "install hides the secret" '! grep -q "$(sed -n "s/^WEBUI_SECRET_KEY=//p" "$E")" <<<"$out"'
+sum1="$(sha256sum "$E")"
+out="$(bash "$A" install --skip-gpu-test --skip-models 2>&1)"; rc=$?
+check "second install succeeds" '[[ $rc -eq 0 ]] && grep -q "Already initialized" <<<"$out"'
+check "second install keeps the secret" '[[ "$(sha256sum "$E")" == "$sum1" ]]'
+: > "$FAKE_DOCKER_LOG"
+bash "$A" install --skip-gpu-test --skip-models >/dev/null 2>&1
+check "skip options are honoured" '! grep -q -- "--gpus all" "$FAKE_DOCKER_LOG" && ! grep -q "ollama pull" "$FAKE_DOCKER_LOG"'
+: > "$FAKE_DOCKER_LOG"
+out="$(FAKE_GPU_FAIL=1 bash "$A" install 2>&1)"; rc=$?
+check "GPU failure stops install" '[[ $rc -ne 0 ]] && grep -q "GPU test failed" <<<"$out" && ! grep -q "up -d" "$FAKE_DOCKER_LOG"'
+bash "$A" install --force >/dev/null 2>&1; rc=$?
+check "unknown install option rejected" '[[ $rc -eq 2 ]]'
+out="$(OPEN_WEBUI_PORT=3177 bash "$A" install --skip-gpu-test --skip-models 2>&1)"
+check "shell port overrides the env file" 'grep -q "localhost:3177" <<<"$out" && grep -q "port 3177" <<<"$out"'
+
+# 16. install stops when data exists without an env file
+R="$T/repo6"; new_repo "$R"; export HOME="$T/home6"; mkdir -p "$HOME"
+A="$R/scripts/aiws.sh"; E="$HOME/.config/home-ai-workstation/aiws.env"
+: > "$FAKE_DOCKER_LOG"
+out="$(FAKE_VOLUME_RC=0 bash "$A" install 2>&1)"; rc=$?
+check "existing data without env stops install" '[[ $rc -ne 0 ]] && grep -q "already has Open WebUI data" <<<"$out"'
+check "stopped install creates no secret" '[[ ! -e "$E" ]]'
+check "stopped install starts nothing" '! grep -q "up -d" "$FAKE_DOCKER_LOG"'
+bash "$A" init >/dev/null 2>&1
+out="$(FAKE_VOLUME_RC=0 bash "$A" install --skip-gpu-test --skip-models 2>&1)"; rc=$?
+check "existing data with env continues" '[[ $rc -eq 0 ]]'
 
 echo "---- $pass passed, $fail failed"
 [[ $fail -eq 0 ]]

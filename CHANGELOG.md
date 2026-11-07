@@ -5,6 +5,10 @@ Versions follow the stages in `docs/ROADMAP.md`. No version has been published y
 ## 0.3.0-dev
 
 ### Added
+- `scripts/install.ps1` and `aiws install` for one-command, repeatable setup
+- `scripts/setup-remote.ps1` for guided Tailscale publishing
+- Windows checks for free space and Docker access from Ubuntu
+- Installation stops when Docker holds data but no env file exists
 - Key-only SSH into WSL Ubuntu and remote access through Tailscale Serve
 - Guidance for Claude Code, Codex and local Ollama models in VS Code
 - `pull-recommended` and `version` commands

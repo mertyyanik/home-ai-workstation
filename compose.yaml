@@ -21,7 +21,7 @@ services:
     # Loopback only, for local editor integrations. Ollama has no authentication,
     # so never bind this to 0.0.0.0 or forward it through Tailscale.
     ports:
-      - "127.0.0.1:11434:11434"
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     # The NVIDIA device reservation is supported in modern Docker Compose.
     deploy:
       resources:

@@ -21,7 +21,7 @@ jobs:
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted
           Install-Module PSScriptAnalyzer -Scope CurrentUser
-          $issues = Invoke-ScriptAnalyzer -Path scripts/windows-check.ps1 -Severity Error
+          $issues = Invoke-ScriptAnalyzer -Path scripts -Recurse -Severity Error
           $issues
           if ($issues) { exit 1 }
       - name: CLI fixture tests

@@ -70,8 +70,10 @@ Exit: sleep and wake tested without losing work.
 ## Public release — Separate decision
 Exit: a clean Windows machine installs from GitHub with documented prerequisites.
 
-- [ ] One-command Windows installer; users install Docker Desktop, WSL and the NVIDIA driver
+- [x] One-command Windows installer; users install Docker Desktop, WSL and the NVIDIA driver
+- [x] Isolated clean-install test with a fresh home, ports and volumes
 - [ ] Clean-install test on an empty Ubuntu distribution
+- [ ] Install directly from GitHub after publication
 - [x] Pin Open WebUI to a tested release, with an upgrade and rollback guide
 - [x] Pin the GPU test images used by `gpu-test`
 - [ ] License review, secret scan, clean examples and documentation

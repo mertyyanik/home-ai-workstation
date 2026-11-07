@@ -34,38 +34,33 @@ is already installed, and restart Windows if asked:
 wsl --install -d Ubuntu
 ```
 
-Then check them. This changes nothing, and a nonzero exit means a check failed:
-
-```powershell
-powershell -File scripts/windows-check.ps1
-```
-
 ## Quick start
 
-Run these in Ubuntu. Keep a single copy of the project. A folder inside Ubuntu, such as
-`~/projects/home-ai-workstation`, is the fastest place for it.
+Download the project, then run this from its folder in Windows PowerShell. Administrator
+rights are not needed:
 
-```bash
-sudo apt update && sudo apt install -y git curl openssl
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ```
 
-```bash
-cd ~/projects/home-ai-workstation
-bash scripts/aiws.sh init
-bash scripts/aiws.sh doctor
-bash scripts/aiws.sh gpu-test
+It checks Windows, WSL, Docker and free space, then runs a real GPU test, creates your
+secret, starts the services and downloads the recommended models. Expect several GB of
+downloads. The script stops with a fix when a check fails, and it is safe to run again.
+
+Use `-Distro NAME` for a different Linux distribution, and `-SkipGpuTest` or `-SkipModels`
+to skip those steps. To run only the checks, which change nothing:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows-check.ps1
 ```
 
-`gpu-test` downloads test images and runs a real CUDA calculation. If it fails, fix the
-Windows, WSL or Docker setup before you continue.
+Then open `http://localhost:3000` in Windows and create the first account, which becomes
+the administrator. Use a strong, unique password. Pick a model and ask a question.
 
-```bash
-bash scripts/aiws.sh up
-bash scripts/aiws.sh pull-recommended
-```
-
-Open `http://localhost:3000` in Windows and create the first account, which becomes the
-administrator. Use a strong, unique password. Then pick a model and ask a question.
+Keep a single copy of the project. Inside Ubuntu you can also run
+`bash scripts/aiws.sh install`. If Docker already holds Open WebUI data but no env file
+exists, installation stops without changing anything, because a new secret must not be
+paired with existing data.
 
 ## Everyday commands
 
@@ -144,37 +139,28 @@ Tailscale advises against also running it inside WSL 2. Nothing opens on the int
 your router, and Serve is limited to your own tailnet. Never use Funnel for this project.
 
 Install Tailscale on Windows and each client, and sign in with the same account. Publish
-the Web UI from Windows PowerShell, and approve HTTPS when asked:
+the Web UI from Windows PowerShell, and approve HTTPS when asked. The script prints your
+private address and is safe to run again:
 
 ```powershell
-tailscale serve --bg 3000
+powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1
 ```
 
-For SSH, set up a key-only server in Ubuntu that listens only on `127.0.0.1:2222`:
+For SSH, first set up a key-only server in Ubuntu that listens only on `127.0.0.1:2222`:
 
 ```bash
 sudo bash scripts/setup-wsl-ssh.sh
 ```
 
-Add your client's **public** key to `~/.ssh/authorized_keys` in Ubuntu, then forward the
-port from Windows PowerShell:
+Then run the remote script with `-Ssh`. It forwards the port and prints the
+`~/.ssh/config` entry for your client:
 
 ```powershell
-tailscale serve --bg --tcp=2222 tcp://127.0.0.1:2222
+powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 -Ssh
 ```
 
-On the client, add this to `~/.ssh/config`, using your own device and tailnet name:
-
-```text
-Host aiws
-  HostName DEVICE.TAILNET.ts.net
-  Port 2222
-  User YOUR_UBUNTU_USER
-  IdentityFile ~/.ssh/aiws_ed25519
-  IdentitiesOnly yes
-```
-
-Then `ssh aiws` opens Ubuntu, and VS Code Remote-SSH can open your Linux projects.
+Add your client's **public** key to `~/.ssh/authorized_keys` in Ubuntu. Then `ssh aiws`
+opens Ubuntu, and VS Code Remote-SSH can open your Linux projects.
 
 To use local models in VS Code, install the
 [Ollama extension](https://docs.ollama.com/integrations/vscode) in the Remote-SSH window

@@ -28,6 +28,8 @@ help() {
   cat <<'EOF'
 Home AI Workstation — CLI (run inside WSL Ubuntu)
 
+  bash scripts/aiws.sh install            Set up everything; safe to run again
+                                          Options: --skip-gpu-test --skip-models
   bash scripts/aiws.sh init               Create the env file with a random secret
   bash scripts/aiws.sh doctor             Check Docker, env file, disk space and port
   bash scripts/aiws.sh gpu-test           Verify GPU visibility and run a CUDA compute test
@@ -105,9 +107,10 @@ compose() {
   docker compose --env-file "$ENV_FILE" "$@"
 }
 
+# Compose gives shell variables priority over the env file, so this does too.
 webui_port() {
-  local port
-  port="$(env_value OPEN_WEBUI_PORT)"
+  local port="${OPEN_WEBUI_PORT:-}"
+  [[ -n "$port" ]] || port="$(env_value OPEN_WEBUI_PORT)"
   echo "${port:-3000}"
 }
 
@@ -360,7 +363,71 @@ restore() (
   echo "Restored Open WebUI data from: $directory"
 )
 
+install() {
+  local option skip_gpu=0 skip_models=0
+  local self=(bash "$REPO_DIR/scripts/aiws.sh")
+  for option in "$@"; do
+    case "$option" in
+      --skip-gpu-test) skip_gpu=1 ;;
+      --skip-models) skip_models=1 ;;
+      *) echo "ERROR: Unknown option: $option" >&2; exit 2 ;;
+    esac
+  done
+
+  echo '==> Checking Docker'
+  require_docker
+  if ! docker version >/dev/null 2>&1; then
+    echo 'ERROR: Docker Desktop is not running, or Ubuntu integration is off.' >&2
+    echo '       Start it, then check Settings > Resources > WSL Integration.' >&2
+    exit 1
+  fi
+
+  # Docker Desktop is one engine for every distribution. A new secret must never be
+  # paired with existing data, for example after reinstalling Ubuntu.
+  local volume="${COMPOSE_PROJECT_NAME:-home-ai-workstation}_open_webui_data"
+  if [[ ! -e "$ENV_FILE" ]] && docker volume inspect "$volume" >/dev/null 2>&1; then
+    echo "ERROR: Docker already has Open WebUI data ($volume), but no env file exists here." >&2
+    echo '       Nothing was changed. Restore your env file with:' >&2
+    echo '         bash scripts/aiws.sh restore BACKUP_DIR' >&2
+    echo '       or set AIWS_ENV_FILE to the existing file.' >&2
+    exit 1
+  fi
+
+  echo '==> Preparing local settings'
+  "${self[@]}" init
+  "${self[@]}" doctor
+
+  if ((skip_gpu)); then
+    echo '==> Skipping the GPU test'
+  else
+    echo '==> Testing the GPU'
+    if ! "${self[@]}" gpu-test; then
+      echo 'ERROR: GPU test failed. Update the Windows NVIDIA driver and check that Docker' >&2
+      echo '       Desktop uses the WSL2 backend. Do not install a Linux NVIDIA driver.' >&2
+      exit 1
+    fi
+  fi
+
+  echo '==> Starting services'
+  "${self[@]}" up
+
+  if ((skip_models)); then
+    echo '==> Skipping model downloads'
+  else
+    echo '==> Downloading recommended models'
+    "${self[@]}" pull-recommended
+  fi
+
+  cat <<EOF
+
+Installation finished. Open http://localhost:$(webui_port) in Windows.
+On a new install, create the first account there. It becomes the administrator,
+so use a strong, unique password.
+EOF
+}
+
 case "${1:-help}" in
+  install) shift; install "$@" ;;
   init) init ;;
   doctor)
     require_docker

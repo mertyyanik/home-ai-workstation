@@ -1,9 +1,11 @@
 # Read-only checks. No installations, configuration changes or restarts.
+param([string]$Distro = 'Ubuntu')
+
 $ErrorActionPreference = 'Continue'
 $script:Failures = 0
 
 function Invoke-Check {
-    param([string]$Label, [string]$Command, [string[]]$Arguments = @())
+    param([string]$Label, [string]$Command, [string[]]$Arguments = @(), [switch]$LinuxOutput)
     Write-Host "`n== $Label =="
     if (-not (Get-Command $Command -ErrorAction SilentlyContinue) -and
         -not (Test-Path -LiteralPath $Command)) {
@@ -17,8 +19,8 @@ function Invoke-Check {
     $info.CreateNoWindow = $true
     $info.RedirectStandardOutput = $true
     $info.RedirectStandardError = $true
-    if ($Command -eq 'wsl') {
-        # Redirected WSL output is UTF-16LE, unlike the other tools.
+    if ($Command -eq 'wsl' -and -not $LinuxOutput) {
+        # Redirected output from wsl.exe itself is UTF-16LE, unlike Linux programs.
         $info.StandardOutputEncoding = [Text.Encoding]::Unicode
         $info.StandardErrorEncoding = [Text.Encoding]::Unicode
     }
@@ -65,10 +67,19 @@ if (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Comp
     Write-Host 'FAIL: Windows reports a pending restart. Restart manually when ready.'
     $script:Failures++
 }
+$systemDrive = Get-PSDrive -Name $env:SystemDrive.TrimEnd(':') -ErrorAction SilentlyContinue
+if ($systemDrive) {
+    $freeGiB = [math]::Floor($systemDrive.Free / 1GB)
+    Write-Host "Free space on ${env:SystemDrive}: $freeGiB GiB"
+    if ($freeGiB -lt 30) {
+        Write-Host 'FAIL: less than 30 GiB free. Images and models need more space.'
+        $script:Failures++
+    }
+}
 Invoke-Check -Label 'NVIDIA' -Command 'nvidia-smi' -Arguments @('--query-gpu=name,memory.total,driver_version', '--format=csv,noheader')
 Invoke-Check -Label 'WSL version' -Command 'wsl' -Arguments @('--version')
 Invoke-Check -Label 'WSL status (exit zero alone does not prove WSL2 works)' -Command 'wsl' -Arguments @('--status')
-Invoke-Check -Label 'WSL distributions: Ubuntu must show VERSION 2' -Command 'wsl' -Arguments @('--list', '--verbose')
+Invoke-Check -Label "WSL distributions: $Distro must show VERSION 2" -Command 'wsl' -Arguments @('--list', '--verbose')
 
 $dockerCommand = 'docker'
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -81,7 +92,12 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 Invoke-Check -Label 'Docker client and engine' -Command $dockerCommand -Arguments @('version')
 Invoke-Check -Label 'Compose' -Command $dockerCommand -Arguments @('compose', 'version')
+$before = $script:Failures
+Invoke-Check -Label "Docker from $Distro" -Command 'wsl' -LinuxOutput -Arguments @('-d', $Distro, '--', 'docker', 'version', '--format', '{{.Server.Version}}')
+if ($script:Failures -gt $before) {
+    Write-Host "Fix: Docker Desktop > Settings > Resources > WSL Integration > enable $Distro."
+}
 Write-Host "`nFailed or unverified checks: $script:Failures"
-Write-Host 'Continue only after Ubuntu VERSION=2, Docker engine and the WSL GPU compute test pass.'
+Write-Host "Continue only after $Distro VERSION=2, Docker engine and the WSL GPU compute test pass."
 if ($script:Failures -gt 0) { exit 1 }
 exit 0
