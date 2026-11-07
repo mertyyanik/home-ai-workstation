@@ -33,8 +33,10 @@ jobs:
           if ($issues) { exit 1 }
       - name: CLI fixture tests
         run: bash scripts/test-aiws.sh
+      - name: Panel tests
+        run: python -m unittest discover -s panel
       - name: Python syntax
-        run: python -m py_compile scripts/check-ml.py ml/smoke-train.py
+        run: python -m py_compile scripts/check-ml.py ml/smoke-train.py panel/server.py
       - name: Compose schema without real secrets
         env:
           WEBUI_SECRET_KEY: ci_dummy_not_a_real_secret

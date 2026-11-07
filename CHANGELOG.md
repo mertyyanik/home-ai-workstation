@@ -5,6 +5,7 @@ Versions follow the stages in `docs/ROADMAP.md`. No version has been published y
 ## 0.3.0-dev
 
 ### Added
+- Read-only status panel, with an optional systemd service that starts with Ubuntu
 - Encrypted `backup-export` and `backup-import` commands
 - Secret scan of full Git history in CI
 - Security policy, threat model and third-party license notes

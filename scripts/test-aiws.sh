@@ -331,5 +331,18 @@ check "import leaves no temporary folder" '[[ -z "$(ls -A "$B" | grep incomplete
 bash "$A" backup-export >/dev/null 2>&1; rc=$?
 check "export needs arguments" '[[ $rc -eq 2 ]]'
 
+# 18. Panel command passes settings and never the env file
+R="$T/repo8"; new_repo "$R"; export HOME="$T/home8"; mkdir -p "$HOME" "$R/panel"
+A="$R/scripts/aiws.sh"
+cat > "$R/panel/server.py" <<'EOF'
+import sys
+print(' '.join(sys.argv[1:]))
+EOF
+bash "$A" init >/dev/null 2>&1
+out="$(OLLAMA_PORT=11499 AIWS_PANEL_PORT=8099 bash "$A" panel 2>&1)"; rc=$?
+check "panel starts" '[[ $rc -eq 0 ]]'
+check "panel receives ports" 'grep -q -- "--port 8099" <<<"$out" && grep -q -- "--ollama-port 11499" <<<"$out"'
+check "panel receives no secret" '! grep -q "$(sed -n "s/^WEBUI_SECRET_KEY=//p" "$HOME/.config/home-ai-workstation/aiws.env")" <<<"$out"'
+
 echo "---- $pass passed, $fail failed"
 [[ $fail -eq 0 ]]

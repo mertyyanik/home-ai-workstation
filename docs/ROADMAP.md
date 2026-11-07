@@ -46,6 +46,15 @@ Exit: authorized remote use from outside home, the correct WSL context, reboot t
 - [ ] Optional unattended recovery after a Windows restart
 - [x] Claude Code and Codex desktop workflows reaching WSL, driven from a phone
 
+## Control panel
+Exit: status and safe controls from a phone, protected by login, with no data-deleting actions.
+
+- [x] Agreed screen design
+- [x] Read-only status on loopback: GPU, memory, services, loaded model, last backup
+- [ ] Panel login, then tailnet-only access
+- [ ] Fixed controls: start, stop, chat and ML modes, unload, backup
+- [x] Automatic start after Windows sign-in
+
 ## v0.4 — GPU coordination
 Exit: conflicting jobs stay controlled and recover after failure.
 

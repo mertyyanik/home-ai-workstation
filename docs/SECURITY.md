@@ -44,7 +44,8 @@ providers use the network.
 
 - Keep Open WebUI and Ollama on `127.0.0.1`. Do not change them to `0.0.0.0`, and do not
   forward ports through your router.
-- Never forward Ollama, Jupyter or the Docker API through Tailscale, and never use Funnel.
+- Never forward Ollama, Jupyter, the status panel or the Docker API through Tailscale, and
+  never use Funnel. The status panel has no login yet.
 - Use a strong, unique password for the first Open WebUI account. Sign-up was off after
   the first account in testing. Confirm this in the admin settings.
 - Do not give containers the Docker socket, your home folder or SSH keys.

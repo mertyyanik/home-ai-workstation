@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workstation status</title>
+<style>
+:root {
+  --ground: #0F1417; --surface: #182026; --line: #2A343B; --text: #E8EDF0; --soft: #C6D0D6;
+  --muted: #A3B0B8; --good: #8BE6DB; --accent: #5FD6C8; --warn: #F2B266;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--ground); color: var(--text);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 32px; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+h1 { margin: 0; font-size: 22px; }
+h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.small { font-size: 13px; color: var(--muted); }
+.pill { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: #17302D; color: var(--good); }
+.pill.warn { background: #3A2A14; color: var(--warn); }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.card { padding: 16px; border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.value { font-family: var(--mono); font-weight: 600; font-size: 14px; }
+.big { font-family: var(--mono); font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+.bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+.service { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.service:first-of-type { border-top: 0; }
+.ok { color: var(--good); }
+.bad { color: var(--warn); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+#error { display: none; padding: 12px 16px; border-radius: 12px; background: #3A2A14; color: var(--warn); font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .bar > div { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1 data-t="title"></h1>
+      <span class="small" id="updated"></span>
+    </div>
+    <span class="pill" id="mode"></span>
+  </header>
+  <div id="error" role="alert" data-t="error"></div>
+  <div class="columns">
+    <div class="stack">
+      <section class="card" aria-labelledby="gpu-title">
+        <div class="row"><h2 id="gpu-title">GPU</h2><span class="small" id="gpu-name"></span></div>
+        <div class="row"><span data-t="vram"></span><span class="value" id="vram"></span></div>
+        <div class="bar"><div id="vram-bar"></div></div>
+        <div class="row"><span data-t="usage"></span><span class="value" id="usage"></span></div>
+        <div class="bar"><div id="usage-bar"></div></div>
+        <div class="row"><span data-t="temperature"></span><span class="value" id="temperature"></span></div>
+      </section>
+      <section class="card" aria-labelledby="model-title">
+        <h2 id="model-title" data-t="model"></h2>
+        <span class="big" id="model-name"></span>
+        <span class="small" id="model-detail"></span>
+      </section>
+    </div>
+    <div class="stack">
+      <section class="card" aria-labelledby="services-title">
+        <h2 id="services-title" data-t="services"></h2>
+        <div id="services"></div>
+      </section>
+      <div class="grid2">
+        <section class="card"><span class="small" data-t="memory"></span><span class="big" id="memory"></span></section>
+        <section class="card"><span class="small" data-t="disk"></span><span class="big" id="disk"></span></section>
+      </div>
+      <section class="card">
+        <span class="small" data-t="backup"></span>
+        <span class="big" id="backup"></span>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+'use strict';
+const TEXT = {
+  en: {
+    title: 'Workstation', updated: 'Updated', vram: 'VRAM', usage: 'Usage', temperature: 'Temperature',
+    model: 'Loaded model', services: 'Services', memory: 'Ubuntu memory', disk: 'Free disk', backup: 'Last backup',
+    noModel: 'None', gpuShare: 'GPU', unloads: 'Unloads', never: 'None yet', unavailable: 'Unavailable',
+    chatMode: 'Chat mode', mlMode: 'ML mode', dockerDown: 'Docker unreachable', error: 'The panel cannot read the status. Is the panel still running?',
+    running: 'Running', exited: 'Stopped', created: 'Stopped', paused: 'Paused', restarting: 'Restarting',
+    missing: 'Not created', listening: 'Listening', closed: 'Closed', connected: 'Connected',
+    disconnected: 'Disconnected', unknown: 'Unknown'
+  },
+  tr: {
+    title: 'Çalışma İstasyonu', updated: 'Güncellendi', vram: 'VRAM', usage: 'Kullanım', temperature: 'Sıcaklık',
+    model: 'Yüklü model', services: 'Servisler', memory: 'Ubuntu belleği', disk: 'Boş disk', backup: 'Son yedek',
+    noModel: 'Yok', gpuShare: 'GPU', unloads: 'Boşalma', never: 'Henüz yok', unavailable: 'Okunamadı',
+    chatMode: 'Sohbet modu', mlMode: 'ML modu', dockerDown: 'Docker erişilemiyor', error: 'Panel durumu okuyamıyor. Panel hâlâ çalışıyor mu?',
+    running: 'Çalışıyor', exited: 'Durduruldu', created: 'Durduruldu', paused: 'Duraklatıldı', restarting: 'Yeniden başlıyor',
+    missing: 'Oluşturulmadı', listening: 'Dinliyor', closed: 'Kapalı', connected: 'Bağlı',
+    disconnected: 'Bağlı değil', unknown: 'Bilinmiyor'
+  }
+};
+const language = navigator.language.toLowerCase().startsWith('tr') ? 'tr' : 'en';
+const t = TEXT[language];
+const locale = language === 'tr' ? 'tr-TR' : undefined;
+const GOOD = new Set(['running', 'listening', 'connected']);
+const SERVICES = [['ollama', 'Ollama'], ['open_webui', 'Open WebUI'], ['ssh', 'SSH'], ['tailscale', 'Tailscale']];
+
+document.documentElement.lang = language;
+document.querySelectorAll('[data-t]').forEach((element) => { element.textContent = t[element.dataset.t]; });
+
+const byId = (id) => document.getElementById(id);
+const setText = (id, value) => { byId(id).textContent = value; };
+const gib = (bytes) => (bytes / 1024 ** 3).toFixed(1);
+const percent = (part, total) => (total ? `${Math.min(100, Math.round(part / total * 100))}%` : '0%');
+
+function renderGpu(gpu) {
+  if (!gpu) {
+    ['gpu-name', 'vram', 'usage', 'temperature'].forEach((id) => setText(id, t.unavailable));
+    byId('vram-bar').style.width = '0';
+    byId('usage-bar').style.width = '0';
+    return;
+  }
+  setText('gpu-name', gpu.name.replace('NVIDIA GeForce ', ''));
+  setText('vram', `${(gpu.memory_used_mib / 1024).toFixed(1)} / ${(gpu.memory_total_mib / 1024).toFixed(1)} GB`);
+  setText('usage', `${gpu.utilization_percent}%`);
+  setText('temperature', `${gpu.temperature_c} °C`);
+  byId('vram-bar').style.width = percent(gpu.memory_used_mib, gpu.memory_total_mib);
+  byId('usage-bar').style.width = `${gpu.utilization_percent}%`;
+}
+
+function renderModel(models) {
+  if (!models.length) {
+    setText('model-name', t.noModel);
+    setText('model-detail', '');
+    return;
+  }
+  const model = models[0];
+  const parts = [];
+  if (model.gpu_percent !== null) parts.push(`${t.gpuShare} ${model.gpu_percent}%`);
+  const expires = Date.parse(model.expires_at);
+  if (!Number.isNaN(expires)) {
+    parts.push(`${t.unloads} ${new Date(expires).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`);
+  }
+  setText('model-name', model.name);
+  setText('model-detail', parts.join(' · '));
+}
+
+function renderServices(services) {
+  const list = byId('services');
+  list.replaceChildren(...SERVICES.map(([key, name]) => {
+    const row = document.createElement('div');
+    row.className = 'service';
+    const label = document.createElement('span');
+    label.textContent = name;
+    const state = document.createElement('span');
+    state.textContent = t[services[key]] || t.unknown;
+    state.className = GOOD.has(services[key]) ? 'ok' : 'bad';
+    row.append(label, state);
+    return row;
+  }));
+  const chat = services.ollama === 'running';
+  const known = services.ollama !== 'unknown';
+  byId('mode').textContent = !known ? t.dockerDown : chat ? t.chatMode : t.mlMode;
+  byId('mode').classList.toggle('warn', !chat);
+}
+
+function render(data) {
+  renderGpu(data.gpu);
+  renderModel(data.models);
+  renderServices(data.services);
+  setText('memory', data.memory ? `${gib(data.memory.used_bytes)} / ${gib(data.memory.total_bytes)} GB` : t.unavailable);
+  setText('disk', data.disk ? `${Math.floor(data.disk.free_bytes / 1024 ** 3)} GB` : t.unavailable);
+  setText('backup', data.last_backup ? new Date(data.last_backup * 1000).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }) : t.never);
+  setText('updated', `${t.updated}: ${new Date(data.time * 1000).toLocaleTimeString(locale)}`);
+}
+
+async function refresh() {
+  try {
+    const response = await fetch('/api/status', { cache: 'no-store' });
+    if (!response.ok) throw new Error(String(response.status));
+    render(await response.json());
+    byId('error').style.display = 'none';
+  } catch {
+    byId('error').style.display = 'block';
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

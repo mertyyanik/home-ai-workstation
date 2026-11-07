@@ -11,7 +11,8 @@ Run these from the repository root in Ubuntu:
 bash -n scripts/aiws.sh
 bash -n scripts/setup-wsl-ssh.sh
 bash scripts/test-aiws.sh
-python3 -m py_compile scripts/check-ml.py ml/smoke-train.py
+python3 -m unittest discover -s panel
+python3 -m py_compile scripts/check-ml.py ml/smoke-train.py panel/server.py
 WEBUI_SECRET_KEY=ci_dummy_not_a_real_secret docker compose -f compose.yaml config --quiet
 ```
 

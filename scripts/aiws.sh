@@ -51,6 +51,7 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh restore DIR [--replace]  Restore a backup into Open WebUI
   bash scripts/aiws.sh backup-export DIR FILE  Encrypt a backup into one file
   bash scripts/aiws.sh backup-import FILE      Decrypt an exported backup
+  bash scripts/aiws.sh panel              Start the read-only status panel
   bash scripts/aiws.sh version            Show the project version
 
 backup briefly stops Open WebUI. Ollama models are not included; models.txt lists
@@ -548,6 +549,13 @@ case "${1:-help}" in
       echo "Downloading $model..."
       compose exec -T ollama ollama pull "$model"
     done
+    ;;
+  panel)
+    # No Docker check: the panel must also start, and say so, when Docker is down.
+    ollama_port="${OLLAMA_PORT:-$(env_value OLLAMA_PORT)}"
+    exec python3 -u panel/server.py --port "${AIWS_PANEL_PORT:-8088}" \
+      --ollama-port "${ollama_port:-11434}" --ssh-port "${AIWS_SSH_PORT:-2222}" \
+      --project "${COMPOSE_PROJECT_NAME:-home-ai-workstation}" --backup-root "$BACKUP_ROOT"
     ;;
   version) cat VERSION ;;
   models)

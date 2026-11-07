@@ -78,6 +78,20 @@ Run `bash scripts/aiws.sh help` for every command. `up`, `chat` and `restart` wa
 180 seconds for the services and show recent logs on failure. Set `AIWS_READY_TIMEOUT`
 to change that limit.
 
+## Status panel
+
+A small read-only page shows GPU, memory, disk, services, the loaded model and the last
+backup. Install it once in Ubuntu as a service, so it starts with Ubuntu, then open
+`http://localhost:8088` in Windows:
+
+```bash
+sudo bash scripts/setup-panel-service.sh
+```
+
+To run it only for now, use `bash scripts/aiws.sh panel`. Set `AIWS_PANEL_PORT` to change
+the port. It listens on `127.0.0.1`, has no login, and can change nothing. Do not publish it
+through Tailscale.
+
 ## Local models
 
 `pull-recommended` downloads `qwen3.5:4b` and `qwen2.5-coder:7b`. The table comes from a
