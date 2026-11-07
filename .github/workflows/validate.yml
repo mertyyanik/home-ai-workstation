@@ -1,4 +1,4 @@
-name: Validate starter
+name: Validate
 on:
   push:
   pull_request:
@@ -14,6 +14,16 @@ jobs:
           bash -n scripts/aiws.sh
           bash -n scripts/setup-wsl-ssh.sh
           bash -n scripts/test-aiws.sh
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh
+      - name: PowerShell analysis
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Scope CurrentUser
+          $issues = Invoke-ScriptAnalyzer -Path scripts/windows-check.ps1 -Severity Error
+          $issues
+          if ($issues) { exit 1 }
       - name: CLI fixture tests
         run: bash scripts/test-aiws.sh
       - name: Python syntax

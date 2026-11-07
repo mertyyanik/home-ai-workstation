@@ -31,6 +31,7 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh gpu-test           Verify GPU visibility and run a CUDA compute test
   bash scripts/aiws.sh up                 Start Ollama + Open WebUI and wait until ready
   bash scripts/aiws.sh pull [model]       Download a model (default: qwen3:4b)
+  bash scripts/aiws.sh pull-recommended   Download the recommended local models
   bash scripts/aiws.sh models             List downloaded models
   bash scripts/aiws.sh active             Show models currently loaded in memory
   bash scripts/aiws.sh unload [model]     Release an active model from VRAM
@@ -44,6 +45,7 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh backup            Back up Open WebUI data and the env file
   bash scripts/aiws.sh restore-test DIR   Test a backup in a temporary volume
   bash scripts/aiws.sh restore DIR [--replace]  Restore a backup into Open WebUI
+  bash scripts/aiws.sh version            Show the project version
 
 backup briefly stops Open WebUI. Ollama models are not included; models.txt lists
 them for downloading again. Open WebUI's cached embedding and speech models are
@@ -53,6 +55,7 @@ data unless --replace is given, and then takes a safety backup first.
 AIWS_READY_TIMEOUT sets the readiness wait in seconds (default: 180).
 AIWS_BACKUP_DIR sets the backup folder
 (default: ~/.local/share/home-ai-workstation/backups).
+AIWS_MODELS sets the space-separated list used by pull-recommended.
 
 Env file: $AIWS_ENV_FILE if set; otherwise an existing repository .env;
 otherwise ~/.config/home-ai-workstation/aiws.env (outside the project folder).
@@ -245,6 +248,7 @@ backup() (
   temporary="$(mktemp -d "$BACKUP_ROOT/.incomplete.XXXXXX")"
   archive="$temporary/open-webui-data.tar.gz"
   # Always remove partial output and bring Open WebUI back, even after a failure.
+  # shellcheck disable=SC2329  # Called through the EXIT trap below.
   finish() {
     rm -rf -- "$temporary"
     if ((restart_webui)); then
@@ -403,6 +407,15 @@ case "${1:-help}" in
     require_docker; require_env
     compose exec -T ollama ollama pull "${2:-$(default_model)}"
     ;;
+  pull-recommended)
+    require_docker; require_env
+    read -r -a models <<< "${AIWS_MODELS:-qwen3:4b qwen2.5-coder:7b}"
+    for model in "${models[@]}"; do
+      echo "Downloading $model..."
+      compose exec -T ollama ollama pull "$model"
+    done
+    ;;
+  version) cat VERSION ;;
   models)
     require_docker; require_env
     compose exec -T ollama ollama list

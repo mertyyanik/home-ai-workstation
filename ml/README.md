@@ -81,8 +81,8 @@ For remote notebooks, use VS Code Remote-SSH and pick the `ml-lab` kernel. See
 
 ## Coding agents
 
-Keep an `AGENTS.md` in each ML project with GPU, secret and long-job rules. Agents
-run as your Linux user, so these rules guide them but do not stop them from reading
+Copy `ml/AGENTS.template.md` into each ML project as `AGENTS.md`. Agents run as your
+Linux user, so these rules guide them but do not stop them from reading
 your secret or backups. Keep approval prompts on.
 
 - **Codex:** in the ChatGPT desktop app, switch the agent and integrated terminal to

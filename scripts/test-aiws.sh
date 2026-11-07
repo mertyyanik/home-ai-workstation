@@ -3,6 +3,9 @@
 # touches no real service. Secrets generated here are throwaway temporary values.
 #
 #   bash scripts/test-aiws.sh
+#
+# Checks are strings run by eval, so single quotes and "unused" variables are intended.
+# shellcheck disable=SC2016,SC2034,SC2012
 set -uo pipefail
 SRC="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 pass=0; fail=0
@@ -39,7 +42,7 @@ unset XDG_CONFIG_HOME AIWS_ENV_FILE
 new_repo() {
   mkdir -p "$1/scripts"
   cp "$SRC/scripts/aiws.sh" "$1/scripts/"
-  cp "$SRC/.env.example" "$SRC/compose.yaml" "$1/"
+  cp "$SRC/.env.example" "$SRC/compose.yaml" "$SRC/VERSION" "$1/"
 }
 HEX='^WEBUI_SECRET_KEY=[a-f0-9]{64}$'
 
@@ -238,6 +241,17 @@ check "ml explains how to return" 'grep -q "aiws.sh chat" <<<"$out"'
 : > "$FAKE_DOCKER_LOG"
 out="$(bash "$A" chat 2>&1)"; rc=$?
 check "chat starts and waits" '[[ $rc -eq 0 ]] && grep -q "up -d" "$FAKE_DOCKER_LOG" && grep -q "are ready" <<<"$out"'
+
+# 14. Recommended models and version
+: > "$FAKE_DOCKER_LOG"
+bash "$A" pull-recommended >/dev/null 2>&1; rc=$?
+check "pull-recommended succeeds" '[[ $rc -eq 0 ]]'
+check "pull-recommended pulls both models" 'grep -q "ollama pull qwen3:4b" "$FAKE_DOCKER_LOG" && grep -q "ollama pull qwen2.5-coder:7b" "$FAKE_DOCKER_LOG"'
+: > "$FAKE_DOCKER_LOG"
+AIWS_MODELS='one:1b two:2b' bash "$A" pull-recommended >/dev/null 2>&1
+check "AIWS_MODELS overrides the list" '[[ "$(grep -c "ollama pull" "$FAKE_DOCKER_LOG")" == 2 ]] && grep -q "ollama pull two:2b" "$FAKE_DOCKER_LOG" && ! grep -q "qwen3" "$FAKE_DOCKER_LOG"'
+out="$(bash "$A" version 2>&1)"; rc=$?
+check "version prints VERSION" '[[ $rc -eq 0 && "$out" == "$(cat "$SRC/VERSION")" ]]'
 
 echo "---- $pass passed, $fail failed"
 [[ $fail -eq 0 ]]

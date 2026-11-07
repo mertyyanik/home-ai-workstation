@@ -36,6 +36,7 @@ Kullanıcıyla Türkçe iletişim kur. Önce bu dosyayı, README.md ve varsa
 
 - Önce PowerShell: `powershell -File scripts/windows-check.ps1` (bu makinede
   `pwsh` yok; PowerShell 7 varsa `pwsh` de olur).
+- CLI değişikliğinde: `bash scripts/test-aiws.sh` (sahte Docker; servislere dokunmaz).
 - Ubuntu hazırsa: `bash -n scripts/aiws.sh`, `bash scripts/aiws.sh doctor`,
   `bash scripts/aiws.sh gpu-test`. GPU görünürlüğü ve gerçek CUDA testi geçmeli.
 - Secret oluşturmadan şema kontrolü: geçici `WEBUI_SECRET_KEY` ortam değeriyle
