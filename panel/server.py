@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Read-only status panel for Home AI Workstation. Uses the standard library only.
 
-It listens on 127.0.0.1 and has no login, so it must not be published through
-Tailscale. It changes nothing and never reads the env file. Start it with:
+It listens on 127.0.0.1. Once a password is set, every visitor must sign in, including
+local ones, because Tailscale Serve also connects from 127.0.0.1. It changes nothing and
+never reads the env file. Start it with:
 
     bash scripts/aiws.sh panel
 """
 import argparse
+import http.cookies
 import json
 import os
 import shutil
@@ -15,20 +17,27 @@ import subprocess
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import auth
+
 HERE = Path(__file__).resolve().parent
-ALLOWED_HOSTS = {'127.0.0.1', 'localhost'}
+LOCAL_HOSTS = {'127.0.0.1', 'localhost'}
+COOKIE_NAME = 'aiws_panel'
+MAX_BODY_BYTES = 4096
 CACHE_SECONDS = 2
 TAILSCALE = '/mnt/c/Program Files/Tailscale/tailscale.exe'
 NVIDIA_SMI_FALLBACK = '/usr/lib/wsl/lib/nvidia-smi'
 SECURITY_HEADERS = {
     'Cache-Control': 'no-store',
     'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; "
-                               "script-src 'unsafe-inline'; connect-src 'self'",
-    'Referrer-Policy': 'no-referrer',
+                               "script-src 'unsafe-inline'; connect-src 'self'; "
+                               "form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    # With no-referrer, browsers send "Origin: null" on form posts and sign-in fails.
+    'Referrer-Policy': 'same-origin',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
 }
@@ -211,37 +220,123 @@ class Cache:
             return self.value
 
 
-def host_allowed(header):
+def host_name(header):
+    return header.rsplit(':', 1)[0].lower() if header else ''
+
+
+def host_allowed(header, extra=()):
     """Block other hosts, which also stops DNS rebinding from web pages."""
-    if not header:
-        return False
-    return header.rsplit(':', 1)[0] in ALLOWED_HOSTS
+    name = host_name(header)
+    return name in LOCAL_HOSTS or name in extra
 
 
-def make_handler(cache):
+def make_handler(cache, access):
     class Handler(BaseHTTPRequestHandler):
         server_version = 'aiws-panel'
         sys_version = ''
 
-        def respond(self, status, content_type, body):
+        def respond(self, status, content_type, body, headers=()):
             self.send_response(status)
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', str(len(body)))
             for name, value in SECURITY_HEADERS.items():
                 self.send_header(name, value)
+            for name, value in headers:
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
+        def text(self, status, message):
+            self.respond(status, 'text/plain; charset=utf-8', message.encode())
+
+        def redirect(self, location, headers=()):
+            self.respond(303, 'text/plain; charset=utf-8', b'', [('Location', location), *headers])
+
+        def page(self, name):
+            self.respond(200, 'text/html; charset=utf-8', (HERE / name).read_bytes())
+
+        def token(self):
+            try:
+                cookies = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
+            except http.cookies.CookieError:
+                return None
+            cookie = cookies.get(COOKIE_NAME)
+            return cookie.value if cookie else None
+
+        def host_ok(self):
+            """A remote host needs a password, so a login can never be skipped."""
+            header = self.headers.get('Host')
+            extra = access.allowed_hosts() if access.required() else ()
+            return host_allowed(header, extra)
+
+        def cookie(self, value, max_age):
+            parts = [f'{COOKIE_NAME}={value}', 'HttpOnly', 'SameSite=Strict', 'Path=/', f'Max-Age={max_age}']
+            if host_name(self.headers.get('Host')) not in LOCAL_HOSTS:
+                parts.append('Secure')
+            return ('Set-Cookie', '; '.join(parts))
+
+        def signed_in(self):
+            return not access.required() or access.valid(self.token())
+
         def do_GET(self):
-            if not host_allowed(self.headers.get('Host')):
-                self.respond(403, 'text/plain; charset=utf-8', b'Forbidden host\n')
-            elif self.path == '/':
-                self.respond(200, 'text/html; charset=utf-8', (HERE / 'index.html').read_bytes())
-            elif self.path == '/api/status':
-                body = json.dumps(cache.get()).encode()
-                self.respond(200, 'application/json', body)
+            path = urllib.parse.urlsplit(self.path).path
+            if not self.host_ok():
+                self.text(403, 'Forbidden host\n')
+            elif path == '/login':
+                if access.required() and not self.signed_in():
+                    self.page('login.html')
+                else:
+                    self.redirect('/')
+            elif path == '/':
+                if self.signed_in():
+                    self.page('index.html')
+                else:
+                    self.redirect('/login')
+            elif path == '/api/status':
+                if self.signed_in():
+                    status = {**cache.get(), 'login_required': access.required()}
+                    self.respond(200, 'application/json', json.dumps(status).encode())
+                else:
+                    self.text(401, 'Sign in required\n')
             else:
-                self.respond(404, 'text/plain; charset=utf-8', b'Not found\n')
+                self.text(404, 'Not found\n')
+
+        def same_origin(self):
+            """Browsers send Origin on POST; a mismatch means another site sent the form."""
+            origin = self.headers.get('Origin')
+            if origin is None:
+                return True
+            return urllib.parse.urlsplit(origin).hostname == host_name(self.headers.get('Host'))
+
+        def form(self):
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+            except ValueError:
+                return None
+            if length < 0 or length > MAX_BODY_BYTES:
+                return None
+            data = self.rfile.read(length).decode('utf-8', 'replace')
+            return urllib.parse.parse_qs(data, keep_blank_values=True)
+
+        def do_POST(self):
+            path = urllib.parse.urlsplit(self.path).path
+            if not self.host_ok() or not self.same_origin():
+                self.text(403, 'Forbidden\n')
+            elif path == '/login':
+                form = self.form()
+                if form is None:
+                    self.text(413, 'Too large\n')
+                    return
+                token, error = access.login(form.get('password', [''])[0])
+                if token:
+                    self.redirect('/', [self.cookie(token, auth.SESSION_SECONDS)])
+                else:
+                    self.redirect(f'/login?error={error}')
+            elif path == '/logout':
+                access.logout(self.token())
+                self.redirect('/login', [self.cookie('', 0)])
+            else:
+                self.text(405, 'Method not allowed\n')
 
         def log_message(self, format, *args):
             return
@@ -256,11 +351,12 @@ def main():
     parser.add_argument('--ssh-port', type=int, default=2222)
     parser.add_argument('--project', default='home-ai-workstation')
     parser.add_argument('--backup-root', required=True)
+    parser.add_argument('--config', required=True)
     args = parser.parse_args()
     config = {'ollama_port': args.ollama_port, 'ssh_port': args.ssh_port,
               'project': args.project, 'backup_root': args.backup_root}
     cache = Cache(lambda: snapshot(config))
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(cache))
+    server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(cache, auth.Auth(args.config)))
     print(f'Status panel: http://127.0.0.1:{args.port} (Ctrl+C to stop)', flush=True)
     try:
         server.serve_forever()

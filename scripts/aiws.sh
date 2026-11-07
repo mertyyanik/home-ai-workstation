@@ -20,6 +20,7 @@ fi
 
 # Backups hold the secret, so they default to a per-user folder outside the project.
 BACKUP_ROOT="${AIWS_BACKUP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/home-ai-workstation/backups}"
+PANEL_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/home-ai-workstation/panel.json"
 WEBUI_DATA=/app/backend/data
 CUDA_TEST_IMAGE='nvidia/cuda:12.4.1-base-ubuntu22.04@sha256:0f6bfcbf267e65123bcc2287e2153dedfc0f24772fb5ce84afe16ac4b2fada95'
 NBODY_TEST_IMAGE='nvcr.io/nvidia/k8s/cuda-sample:nbody@sha256:59261e419d6d48a772aad5bb213f9f1588fcdb042b115ceb7166c89a51f03363'
@@ -52,6 +53,8 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh backup-export DIR FILE  Encrypt a backup into one file
   bash scripts/aiws.sh backup-import FILE      Decrypt an exported backup
   bash scripts/aiws.sh panel              Start the read-only status panel
+  bash scripts/aiws.sh panel-password     Set the panel password
+  bash scripts/aiws.sh panel-allow HOST   Allow a host name for the panel
   bash scripts/aiws.sh version            Show the project version
 
 backup briefly stops Open WebUI. Ollama models are not included; models.txt lists
@@ -555,7 +558,15 @@ case "${1:-help}" in
     ollama_port="${OLLAMA_PORT:-$(env_value OLLAMA_PORT)}"
     exec python3 -u panel/server.py --port "${AIWS_PANEL_PORT:-8088}" \
       --ollama-port "${ollama_port:-11434}" --ssh-port "${AIWS_SSH_PORT:-2222}" \
-      --project "${COMPOSE_PROJECT_NAME:-home-ai-workstation}" --backup-root "$BACKUP_ROOT"
+      --project "${COMPOSE_PROJECT_NAME:-home-ai-workstation}" --backup-root "$BACKUP_ROOT" \
+      --config "$PANEL_CONFIG"
+    ;;
+  panel-password)
+    exec python3 panel/auth_tool.py --config "$PANEL_CONFIG" password
+    ;;
+  panel-allow)
+    if [[ -z "${2:-}" ]]; then echo 'Usage: panel-allow HOST' >&2; exit 2; fi
+    exec python3 panel/auth_tool.py --config "$PANEL_CONFIG" allow "$2"
     ;;
   version) cat VERSION ;;
   models)

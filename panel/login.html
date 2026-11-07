@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workstation sign in</title>
+<style>
+:root { --ground: #0F1417; --surface: #182026; --line: #3A4750; --text: #E8EDF0; --muted: #A3B0B8; --accent: #5FD6C8; --warn: #F2B266; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
+  background: var(--ground); color: var(--text);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+form { width: 100%; max-width: 360px; padding: 24px; border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 14px; }
+h1 { margin: 0; font-size: 22px; }
+label { font-size: 14px; color: var(--muted); }
+input { min-height: 48px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--ground); color: var(--text); font-size: 16px; }
+button { min-height: 48px; border: 0; border-radius: 10px; background: var(--accent); color: #08201D; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; }
+#message { display: none; margin: 0; color: var(--warn); font-size: 14px; }
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+  <h1 data-t="title"></h1>
+  <p id="message" role="alert"></p>
+  <label for="password" data-t="password"></label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+  <button type="submit" data-t="signIn"></button>
+</form>
+<script>
+'use strict';
+const TEXT = {
+  en: { title: 'Workstation', password: 'Password', signIn: 'Sign in', invalid: 'Wrong password.', locked: 'Too many attempts. Wait a minute and try again.' },
+  tr: { title: 'Çalışma İstasyonu', password: 'Parola', signIn: 'Giriş yap', invalid: 'Parola yanlış.', locked: 'Çok fazla deneme. Bir dakika bekleyip tekrar dene.' }
+};
+const language = navigator.language.toLowerCase().startsWith('tr') ? 'tr' : 'en';
+const t = TEXT[language];
+document.documentElement.lang = language;
+document.querySelectorAll('[data-t]').forEach((element) => { element.textContent = t[element.dataset.t]; });
+const error = new URLSearchParams(location.search).get('error');
+if (error === 'invalid' || error === 'locked') {
+  const message = document.getElementById('message');
+  message.textContent = t[error];
+  message.style.display = 'block';
+}
+</script>
+</body>
+</html>

@@ -1,11 +1,15 @@
 # Publish the Web UI and optional SSH to your own Tailscale network. Safe to run again.
 # It never uses Funnel, and it never forwards Ollama, which has no login.
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 [-Ssh]
+#   powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 [-Ssh] [-Panel]
 param(
     [switch]$Ssh,
+    [switch]$Panel,
+    [string]$Distro = 'Ubuntu',
     [ValidateRange(1, 65535)][int]$WebPort = 3000,
-    [ValidateRange(1, 65535)][int]$SshPort = 2222
+    [ValidateRange(1, 65535)][int]$SshPort = 2222,
+    [ValidateRange(1, 65535)][int]$PanelPort = 8088,
+    [ValidateRange(1, 65535)][int]$PanelPublicPort = 8443
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,5 +86,24 @@ if ($Ssh) {
     Write-Host '  User YOUR_UBUNTU_USER'
     Write-Host '  IdentityFile ~/.ssh/aiws_ed25519'
     Write-Host '  IdentitiesOnly yes'
+}
+
+if ($Panel) {
+    if (-not (Test-LocalPort -Port $PanelPort)) {
+        Write-Host "`nThe status panel is not listening on 127.0.0.1:$PanelPort. In Ubuntu, run:"
+        Write-Host '  sudo bash scripts/setup-panel-service.sh'
+        exit 1
+    }
+    # This fails unless a panel password exists, so the panel is never published without login.
+    $repository = Split-Path -Parent $PSScriptRoot
+    & wsl -d $Distro --cd $repository -- bash scripts/aiws.sh panel-allow $hostName
+    if ($LASTEXITCODE -ne 0) { exit 1 }
+    if ((Get-ServeStatus) -match "proxy http://127\.0\.0\.1:$PanelPort") {
+        Write-Host 'Status panel is already published.'
+    } else {
+        & $tailscale serve --bg "--https=$PanelPublicPort" $PanelPort
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+    }
+    Write-Host "Status panel: https://${hostName}:$PanelPublicPort (sign-in required)"
 }
 exit 0

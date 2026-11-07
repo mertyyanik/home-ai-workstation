@@ -22,6 +22,9 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .small { font-size: 13px; color: var(--muted); }
 .pill { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: #17302D; color: var(--good); }
 .pill.warn { background: #3A2A14; color: var(--warn); }
+.actions { display: flex; align-items: center; gap: 10px; }
+.actions form { margin: 0; }
+.actions button { min-height: 44px; padding: 0 12px; border: 1px solid #3A4750; border-radius: 10px; background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; align-items: start; }
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .card { padding: 16px; border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
@@ -46,7 +49,10 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; }
       <h1 data-t="title"></h1>
       <span class="small" id="updated"></span>
     </div>
-    <span class="pill" id="mode"></span>
+    <div class="actions">
+      <span class="pill" id="mode"></span>
+      <form method="post" action="/logout" id="logout" hidden><button type="submit" data-t="signOut"></button></form>
+    </div>
   </header>
   <div id="error" role="alert" data-t="error"></div>
   <div class="columns">
@@ -88,7 +94,7 @@ const TEXT = {
     title: 'Workstation', updated: 'Updated', vram: 'VRAM', usage: 'Usage', temperature: 'Temperature',
     model: 'Loaded model', services: 'Services', memory: 'Ubuntu memory', disk: 'Free disk', backup: 'Last backup',
     noModel: 'None', gpuShare: 'GPU', unloads: 'Unloads', never: 'None yet', unavailable: 'Unavailable',
-    chatMode: 'Chat mode', mlMode: 'ML mode', dockerDown: 'Docker unreachable', error: 'The panel cannot read the status. Is the panel still running?',
+    chatMode: 'Chat mode', mlMode: 'ML mode', dockerDown: 'Docker unreachable', signOut: 'Sign out', error: 'The panel cannot read the status. Is the panel still running?',
     running: 'Running', exited: 'Stopped', created: 'Stopped', paused: 'Paused', restarting: 'Restarting',
     missing: 'Not created', listening: 'Listening', closed: 'Closed', connected: 'Connected',
     disconnected: 'Disconnected', unknown: 'Unknown'
@@ -97,7 +103,7 @@ const TEXT = {
     title: 'Çalışma İstasyonu', updated: 'Güncellendi', vram: 'VRAM', usage: 'Kullanım', temperature: 'Sıcaklık',
     model: 'Yüklü model', services: 'Servisler', memory: 'Ubuntu belleği', disk: 'Boş disk', backup: 'Son yedek',
     noModel: 'Yok', gpuShare: 'GPU', unloads: 'Boşalma', never: 'Henüz yok', unavailable: 'Okunamadı',
-    chatMode: 'Sohbet modu', mlMode: 'ML modu', dockerDown: 'Docker erişilemiyor', error: 'Panel durumu okuyamıyor. Panel hâlâ çalışıyor mu?',
+    chatMode: 'Sohbet modu', mlMode: 'ML modu', dockerDown: 'Docker erişilemiyor', signOut: 'Çıkış', error: 'Panel durumu okuyamıyor. Panel hâlâ çalışıyor mu?',
     running: 'Çalışıyor', exited: 'Durduruldu', created: 'Durduruldu', paused: 'Duraklatıldı', restarting: 'Yeniden başlıyor',
     missing: 'Oluşturulmadı', listening: 'Dinliyor', closed: 'Kapalı', connected: 'Bağlı',
     disconnected: 'Bağlı değil', unknown: 'Bilinmiyor'
@@ -169,6 +175,7 @@ function renderServices(services) {
 }
 
 function render(data) {
+  byId('logout').hidden = !data.login_required;
   renderGpu(data.gpu);
   renderModel(data.models);
   renderServices(data.services);
@@ -181,6 +188,10 @@ function render(data) {
 async function refresh() {
   try {
     const response = await fetch('/api/status', { cache: 'no-store' });
+    if (response.status === 401) {
+      location.href = '/login';
+      return;
+    }
     if (!response.ok) throw new Error(String(response.status));
     render(await response.json());
     byId('error').style.display = 'none';

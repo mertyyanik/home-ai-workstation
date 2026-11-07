@@ -89,8 +89,22 @@ sudo bash scripts/setup-panel-service.sh
 ```
 
 To run it only for now, use `bash scripts/aiws.sh panel`. Set `AIWS_PANEL_PORT` to change
-the port. It listens on `127.0.0.1`, has no login, and can change nothing. Do not publish it
-through Tailscale.
+the port. It listens on `127.0.0.1` and can change nothing.
+
+Set a password before you use it from other devices. After that, every visitor must sign
+in, including on this PC. Then publish it to your own Tailscale network from Windows
+PowerShell, which refuses to run without a password:
+
+```bash
+bash scripts/aiws.sh panel-password
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 -Panel
+```
+
+It prints the private address. Five wrong passwords lock sign-in for 60 seconds, and a
+session lasts 12 hours.
 
 ## Local models
 

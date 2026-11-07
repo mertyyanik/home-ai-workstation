@@ -4,17 +4,34 @@
 """
 import json
 import os
+import stat
+import subprocess
+import sys
 import tempfile
 import threading
 import time
 import unittest
-import urllib.error
-import urllib.request
+import urllib.parse
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import auth
 import server
+
+PASSWORD = 'correct horse battery'
+FAST_SCRYPT = 2 ** 4
+
+
+def setUpModule():
+    """Keep password tests fast. Real settings are checked in test_real_cost."""
+    global real_n
+    real_n = auth.SCRYPT_N
+    auth.SCRYPT_N = FAST_SCRYPT
+
+
+def tearDownModule():
+    auth.SCRYPT_N = real_n
 
 
 class ParsingTests(unittest.TestCase):
@@ -59,6 +76,9 @@ class ParsingTests(unittest.TestCase):
             self.assertTrue(server.host_allowed(host), host)
         for host in ('evil.example', 'evil.example:8088', '127.0.0.1.evil.example:8088', '', None):
             self.assertFalse(server.host_allowed(host), host)
+        self.assertTrue(server.host_allowed('panel.example:8443', {'panel.example'}))
+        self.assertTrue(server.host_allowed('PANEL.example', {'panel.example'}))
+        self.assertFalse(server.host_allowed('other.example', {'panel.example'}))
 
 
 class BackupTests(unittest.TestCase):
@@ -88,12 +108,121 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(cache.get(), 2)
 
 
-class HttpTests(unittest.TestCase):
+class PasswordTests(unittest.TestCase):
+    def test_hash_and_verify(self):
+        record = auth.hash_password(PASSWORD)
+        self.assertNotIn(PASSWORD, json.dumps(record))
+        self.assertTrue(auth.verify_password(PASSWORD, record))
+        self.assertFalse(auth.verify_password('wrong', record))
+
+    def test_salt_differs(self):
+        self.assertNotEqual(auth.hash_password(PASSWORD), auth.hash_password(PASSWORD))
+
+    def test_bad_record(self):
+        for record in (None, {}, {'salt': 'zz', 'hash': 'x'}):
+            self.assertFalse(auth.verify_password(PASSWORD, record))
+
+    def test_real_cost(self):
+        self.assertGreaterEqual(real_n, 2 ** 15)
+        auth.SCRYPT_N = real_n
+        try:
+            self.assertTrue(auth.verify_password(PASSWORD, auth.hash_password(PASSWORD)))
+        finally:
+            auth.SCRYPT_N = FAST_SCRYPT
+
+    def test_config_is_private(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'new' / 'panel.json'
+            auth.write_config(path, {'a': 1})
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertEqual(auth.read_config(path), {'a': 1})
+            self.assertEqual(os.listdir(path.parent), ['panel.json'])
+
+    def test_broken_config(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'panel.json'
+            self.assertEqual(auth.read_config(path), {})
+            path.write_text('{broken', encoding='utf-8')
+            self.assertEqual(auth.read_config(path), {})
+
+
+class SessionTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.path = Path(self.folder.name) / 'panel.json'
+        auth.write_config(self.path, {'password': auth.hash_password(PASSWORD)})
+        self.now = 1000.0
+        self.access = auth.Auth(self.path, clock=lambda: self.now)
+
+    def test_login_and_logout(self):
+        token, error = self.access.login(PASSWORD)
+        self.assertIsNone(error)
+        self.assertTrue(self.access.valid(token))
+        self.access.logout(token)
+        self.assertFalse(self.access.valid(token))
+
+    def test_wrong_and_missing_token(self):
+        self.assertEqual(self.access.login('wrong'), (None, 'invalid'))
+        self.assertFalse(self.access.valid('made-up'))
+        self.assertFalse(self.access.valid(None))
+
+    def test_expiry(self):
+        token, _ = self.access.login(PASSWORD)
+        self.now += auth.SESSION_SECONDS + 1
+        self.assertFalse(self.access.valid(token))
+
+    def test_lockout_blocks_correct_password_then_ends(self):
+        for _ in range(auth.MAX_FAILURES):
+            self.assertEqual(self.access.login('wrong')[1], 'invalid')
+        self.assertEqual(self.access.login(PASSWORD), (None, 'locked'))
+        self.now += auth.LOCK_SECONDS + 1
+        self.assertIsNotNone(self.access.login(PASSWORD)[0])
+
+    def test_password_change_ends_sessions(self):
+        token, _ = self.access.login(PASSWORD)
+        auth.write_config(self.path, {'password': auth.hash_password('another long password')})
+        self.assertFalse(self.access.valid(token))
+
+    def test_no_password_never_logs_in(self):
+        auth.write_config(self.path, {})
+        self.assertFalse(self.access.required())
+        self.assertIsNone(self.access.login('')[0])
+
+
+class ToolTests(unittest.TestCase):
+    def tool(self, config, *args, stdin=''):
+        return subprocess.run(
+            [sys.executable, str(server.HERE / 'auth_tool.py'), '--config', str(config), *args],
+            input=stdin, capture_output=True, text=True, timeout=30, check=False)
+
+    def test_password_and_host(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'panel.json'
+            self.assertNotEqual(self.tool(path, 'allow', 'panel.example').returncode, 0)
+            self.assertNotEqual(self.tool(path, 'password', stdin='short\n').returncode, 0)
+            self.assertFalse(path.exists())
+            result = self.tool(path, 'password', stdin=f'{PASSWORD}\n')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn(PASSWORD, path.read_text(encoding='utf-8'))
+            self.assertNotIn(PASSWORD, result.stdout)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertEqual(self.tool(path, 'allow', 'Panel.Example').returncode, 0)
+            self.assertEqual(self.tool(path, 'allow', 'panel.example').returncode, 0)
+            self.assertEqual(auth.read_config(path)['allowed_hosts'], ['panel.example'])
+            self.assertNotEqual(self.tool(path, 'allow', 'bad host/x').returncode, 0)
+
+
+class HttpBase(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
+    def start(cls, config):
+        cls.folder = tempfile.TemporaryDirectory()
+        cls.config = Path(cls.folder.name) / 'panel.json'
+        auth.write_config(cls.config, config)
         status = {'time': 1, 'services': {'ollama': 'running'}}
         cache = server.Cache(lambda: status)
-        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), server.make_handler(cache))
+        cls.access = auth.Auth(cls.config)
+        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), server.make_handler(cache, cls.access))
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -101,16 +230,126 @@ class HttpTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        cls.folder.cleanup()
 
-    def request(self, path, method='GET', host='127.0.0.1'):
+    def request(self, path, method='GET', host='127.0.0.1', headers=(), body=b''):
         connection = HTTPConnection('127.0.0.1', self.port, timeout=5)
         connection.putrequest(method, path, skip_host=True)
         connection.putheader('Host', host)
-        connection.endheaders()
+        for name, value in headers:
+            connection.putheader(name, value)
+        if body or method == 'POST':
+            connection.putheader('Content-Length', str(len(body)))
+        connection.endheaders(body)
         response = connection.getresponse()
-        body = response.read()
+        data = response.read()
         connection.close()
-        return response, body
+        return response, data
+
+
+class LoginHttpTests(HttpBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.start({'password': auth.hash_password(PASSWORD), 'allowed_hosts': ['panel.example']})
+
+    def setUp(self):
+        self.access.failures = 0
+        self.access.locked_until = 0.0
+
+    def login(self, password=PASSWORD, host='127.0.0.1', origin=None):
+        headers = [('Content-Type', 'application/x-www-form-urlencoded')]
+        if origin:
+            headers.append(('Origin', origin))
+        body = urllib.parse.urlencode({'password': password}).encode()
+        return self.request('/login', 'POST', host, headers, body)
+
+    def cookie(self, response):
+        return response.getheader('Set-Cookie').split(';')[0]
+
+    def test_local_visit_also_needs_login(self):
+        response, _ = self.request('/')
+        self.assertEqual((response.status, response.getheader('Location')), (303, '/login'))
+        response, body = self.request('/api/status')
+        self.assertEqual(response.status, 401)
+        self.assertNotIn(b'ollama', body)
+        self.assertEqual(self.request('/login')[0].status, 200)
+
+    def test_sign_in_and_out(self):
+        response, _ = self.login()
+        self.assertEqual((response.status, response.getheader('Location')), (303, '/'))
+        header = response.getheader('Set-Cookie')
+        self.assertIn('HttpOnly', header)
+        self.assertIn('SameSite=Strict', header)
+        cookie = ('Cookie', self.cookie(response))
+        response, body = self.request('/api/status', headers=[cookie])
+        self.assertEqual(response.status, 200)
+        self.assertTrue(json.loads(body)['login_required'])
+        self.assertEqual(self.request('/', headers=[cookie])[0].status, 200)
+        self.request('/logout', 'POST', headers=[cookie])
+        self.assertEqual(self.request('/api/status', headers=[cookie])[0].status, 401)
+
+    def test_wrong_password(self):
+        response, _ = self.login('wrong password')
+        self.assertEqual(response.getheader('Location'), '/login?error=invalid')
+        self.assertIsNone(response.getheader('Set-Cookie'))
+
+    def test_lockout_message(self):
+        for _ in range(auth.MAX_FAILURES):
+            self.login('wrong password')
+        response, _ = self.login()
+        self.assertEqual(response.getheader('Location'), '/login?error=locked')
+
+    def test_remote_host_gets_secure_cookie(self):
+        response, _ = self.login(host='panel.example:8443', origin='https://panel.example:8443')
+        self.assertEqual(response.status, 303)
+        self.assertIn('Secure', response.getheader('Set-Cookie'))
+
+    def test_local_cookie_works_without_https(self):
+        self.assertNotIn('Secure', self.login()[0].getheader('Set-Cookie'))
+
+    def test_unknown_host_is_refused(self):
+        self.assertEqual(self.request('/login', host='evil.example')[0].status, 403)
+        self.assertEqual(self.login(host='evil.example')[0].status, 403)
+
+    def test_cross_site_post_is_refused(self):
+        for origin in ('https://evil.example', 'null'):
+            response, _ = self.login(origin=origin)
+            self.assertEqual(response.status, 403, origin)
+            self.assertIsNone(response.getheader('Set-Cookie'))
+
+    def test_login_page_lets_browsers_send_origin(self):
+        # no-referrer makes browsers send "Origin: null", which breaks sign-in.
+        response, _ = self.request('/login')
+        self.assertEqual(response.getheader('Referrer-Policy'), 'same-origin')
+
+    def test_large_body_is_refused(self):
+        headers = [('Content-Type', 'application/x-www-form-urlencoded')]
+        response, _ = self.request('/login', 'POST', headers=headers, body=b'a' * (server.MAX_BODY_BYTES + 1))
+        self.assertEqual(response.status, 413)
+
+    def test_bad_cookie_is_ignored(self):
+        for value in ('aiws_panel=fake', 'broken;;;', 'a"b=c'):
+            self.assertEqual(self.request('/api/status', headers=[('Cookie', value)])[0].status, 401)
+
+
+class NoPasswordHostTests(HttpBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.start({'allowed_hosts': ['panel.example']})
+
+    def test_allowed_host_needs_a_password_first(self):
+        self.assertEqual(self.request('/api/status', host='panel.example')[0].status, 403)
+        self.assertEqual(self.request('/', host='panel.example')[0].status, 403)
+
+    def test_login_page_redirects_locally(self):
+        response, _ = self.request('/login')
+        self.assertEqual((response.status, response.getheader('Location')), (303, '/'))
+
+
+class HttpTests(HttpBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.start({})
 
     def test_page(self):
         response, body = self.request('/')
@@ -134,14 +373,16 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.request('/../server.py')[0].status, 404)
 
     def test_read_only(self):
-        for method in ('POST', 'PUT', 'DELETE'):
+        self.assertEqual(self.request('/api/status', method='POST')[0].status, 405)
+        for method in ('PUT', 'DELETE'):
             self.assertEqual(self.request('/api/status', method=method)[0].status, 501, method)
 
     def test_page_has_no_external_resources(self):
-        body = (server.HERE / 'index.html').read_text(encoding='utf-8')
-        self.assertNotIn('http://', body)
-        self.assertNotIn('https://', body)
-        self.assertNotIn('innerHTML', body)
+        for name in ('index.html', 'login.html'):
+            body = (server.HERE / name).read_text(encoding='utf-8')
+            self.assertNotIn('http://', body)
+            self.assertNotIn('https://', body)
+            self.assertNotIn('innerHTML', body)
 
 
 class BindingTests(unittest.TestCase):
