@@ -29,6 +29,11 @@ job at a time.
 If your agent's sandbox blocks the GPU, keep file work inside the sandbox. Ask the
 user to approve each GPU command on its own, and do not widen that approval.
 
+In the Codex sandbox, `nvidia-smi` fails with `GPU access blocked by the operating
+system`, `/dev/dxg` is missing and `torch.cuda.is_available()` is `False`. That means
+the sandbox, not a broken GPU or driver. Do not install or change drivers; run the same
+command again outside the sandbox with the user's approval.
+
 ## Long jobs
 
 - Start training in its own session: `tmux new-session -d -s NAME`.

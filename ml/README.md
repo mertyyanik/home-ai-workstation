@@ -89,7 +89,9 @@ your secret or backups. Keep approval prompts on.
   WSL, restart, and open the project from `\\wsl$\Ubuntu\home\YOUR_USER\projects`. A
   chat outside a project runs in a temporary folder and misses your rules, so check
   `pwd` first. Pair your phone under Settings > Connections.
-- **Codex GPU use:** its sandbox blocks the GPU. Keep file work inside the sandbox and
+- **Codex GPU use:** its sandbox leaves out `/dev/dxg`, the WSL GPU device, so
+  `nvidia-smi` reports `GPU access blocked by the operating system` and PyTorch sees no
+  CUDA. The GPU itself is fine. Keep file work inside the sandbox and
   approve each GPU command on its own. Do not grant full access, and do not always
   allow `python`, because that effectively turns the sandbox off.
 - **Claude Code:** the desktop app can run commands through `wsl` and continue from
