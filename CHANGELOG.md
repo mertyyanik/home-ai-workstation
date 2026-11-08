@@ -21,6 +21,8 @@ Versions follow the stages in `docs/ROADMAP.md`. No tagged release exists yet.
 - Project rules template for ML work
 - ShellCheck and PowerShell analysis in CI
 - `docs/UPGRADE.md` for testing, applying and rolling back image changes
+- `scripts/fix-wsl-lso.ps1`, which keeps Large Send Offload off on the WSL network adapter
+  so Ubuntu downloads stay fast after a restart
 
 ### Changed
 - Ollama API published on `127.0.0.1:11434` for local editor tools

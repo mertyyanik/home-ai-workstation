@@ -226,7 +226,7 @@ start only once a user signs in. Tailscale does not wake a sleeping PC.
 | Out of VRAM | `unload`, a smaller model or context; don't train alongside a model |
 | WSL uses too much RAM | Optional `config/.wslconfig.example`, then `wsl --shutdown` |
 | Model forgets earlier text | Prompts over 16384 tokens are cut silently; look for `truncating input prompt` in `logs ollama` |
-| Downloads in Ubuntu crawl at KB/s while Windows is fast | Large Send Offload on the WSL network adapter. In admin PowerShell: `Disable-NetAdapterLso -Name "vEthernet (WSL (Hyper-V firewall))" -IncludeHidden`. It may turn back on after a restart |
+| Downloads in Ubuntu crawl at KB/s while Windows is fast | Large Send Offload on the WSL network adapter, which turns back on after a restart. In admin PowerShell, `scripts\fix-wsl-lso.ps1 -Install` turns it off and adds a task that keeps it off; `-Uninstall` removes the task |
 | `pull` fails with `no such host` | Can be temporary; run the same `pull` again, it resumes |
 | First answer takes over a minute | Expected after the Ollama container is created; later loads took seconds |
 | `wsl` errors 1618/1601, Docker "unable to start" | A WSL update may be installing; wait, services return on their own |
