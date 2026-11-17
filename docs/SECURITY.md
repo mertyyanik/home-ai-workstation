@@ -54,7 +54,8 @@ providers use the network.
   restore data. It runs as your Ubuntu user, so a bug in it would have that user's access.
 - Hermes runs its commands inside its own container, which holds only its data volume.
   That volume holds your model sign-in, so anyone with the Hermes password can use your
-  plan. Use a unique password, publish only the web app, and keep the dashboard local. The
+  plan. Use a unique password. Publish the dashboard only if you use a Hermes app: with
+  the password it can also change keys, settings and extensions, such as MCP servers. The
   sign-in has a rate limit but no lockout, and it does not check the Host header.
 - Use a strong, unique password for the first Open WebUI account. Sign-up was off after
   the first account in testing. Confirm this in the admin settings.

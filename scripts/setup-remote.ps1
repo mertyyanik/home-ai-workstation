@@ -1,18 +1,21 @@
 # Publish the Web UI and optional SSH to your own Tailscale network. Safe to run again.
 # It never uses Funnel, and it never forwards Ollama, which has no login.
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 [-Ssh] [-Panel] [-Hermes]
+#   powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 [-Ssh] [-Panel] [-Hermes] [-HermesDashboard]
 param(
     [switch]$Ssh,
     [switch]$Panel,
     [switch]$Hermes,
+    [switch]$HermesDashboard,
     [string]$Distro = 'Ubuntu',
     [ValidateRange(1, 65535)][int]$WebPort = 3000,
     [ValidateRange(1, 65535)][int]$SshPort = 2222,
     [ValidateRange(1, 65535)][int]$PanelPort = 8088,
     [ValidateRange(1, 65535)][int]$PanelPublicPort = 8443,
     [ValidateRange(1, 65535)][int]$HermesPort = 9120,
-    [ValidateRange(1, 65535)][int]$HermesPublicPort = 9444
+    [ValidateRange(1, 65535)][int]$HermesPublicPort = 9444,
+    [ValidateRange(1, 65535)][int]$HermesDashboardPort = 9119,
+    [ValidateRange(1, 65535)][int]$HermesDashboardPublicPort = 9445
 )
 
 $ErrorActionPreference = 'Stop'
@@ -130,5 +133,25 @@ if ($Hermes) {
         if ($LASTEXITCODE -ne 0) { exit 1 }
     }
     Write-Host "Hermes: https://${hostName}:$HermesPublicPort (sign-in required)"
+}
+
+if ($HermesDashboard) {
+    # The dashboard manages keys, settings and extensions. Hermes desktop and mobile apps
+    # connect to it, so publish it only when you use one of them.
+    if (-not (Test-LocalPort -Port $HermesDashboardPort)) {
+        Write-Host "`nThe Hermes dashboard is not listening on 127.0.0.1:$HermesDashboardPort. In Ubuntu, run:"
+        Write-Host '  bash scripts/aiws.sh hermes up'
+        exit 1
+    }
+    $repository = Split-Path -Parent $PSScriptRoot
+    & wsl -d $Distro --cd $repository -- bash scripts/aiws.sh hermes allow "https://${hostName}:$HermesDashboardPublicPort" dashboard
+    if ($LASTEXITCODE -ne 0) { exit 1 }
+    if ((Get-ServeStatus) -match "proxy http://127\.0\.0\.1:$HermesDashboardPort") {
+        Write-Host 'The Hermes dashboard is already published.'
+    } else {
+        & $tailscale serve --bg "--https=$HermesDashboardPublicPort" $HermesDashboardPort
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+    }
+    Write-Host "Hermes dashboard and apps: https://${hostName}:$HermesDashboardPublicPort (sign-in required)"
 }
 exit 0

@@ -583,11 +583,11 @@ hermes_command() {
       hermes_compose exec -u hermes hermes hermes model
       ;;
     allow)
-      if [[ ! "${2:-}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
-        echo 'Usage: hermes allow https://HOST[:PORT]  (the exact address your browser opens)' >&2
+      if [[ ! "${2:-}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ || ! "${3:-webapp}" =~ ^(webapp|dashboard)$ ]]; then
+        echo 'Usage: hermes allow https://HOST[:PORT] [webapp|dashboard]  (the exact address you open)' >&2
         exit 2
       fi
-      hermes_compose exec -T -u hermes hermes hermes config set webapp.public_url "$2" >/dev/null
+      hermes_compose exec -T -u hermes hermes hermes config set "${3:-webapp}.public_url" "$2" >/dev/null
       hermes_compose restart hermes >/dev/null
       hermes_wait
       ;;
@@ -607,7 +607,8 @@ Usage: bash scripts/aiws.sh hermes COMMAND
                    given replaces the previous one
   status           Show the container and its local addresses
   logs [-f]        Show the last 100 log lines; -f follows
-  allow URL        Accept the web app's remote address, e.g. https://pc.example.ts.net:9444
+  allow URL [dashboard]  Accept a remote address for the web app (default) or the
+                   dashboard, e.g. https://pc.example.ts.net:9444
   stop             Stop Hermes; keep its container and data
   down             Remove the container; keep its data volume
 EOF

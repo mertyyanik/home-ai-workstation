@@ -386,6 +386,11 @@ check "hermes allow rejects a non-https URL" '[[ $rc -eq 2 ]]'
 : > "$FAKE_DOCKER_LOG"
 bash "$A" hermes allow https://pc.example.ts.net:9444 >/dev/null 2>&1
 check "hermes allow sets the web app address" 'grep -q "hermes config set webapp.public_url https://pc.example.ts.net:9444" "$FAKE_DOCKER_LOG"'
+: > "$FAKE_DOCKER_LOG"
+bash "$A" hermes allow https://pc.example.ts.net:9445 dashboard >/dev/null 2>&1
+check "hermes allow can set the dashboard address" 'grep -q "hermes config set dashboard.public_url https://pc.example.ts.net:9445" "$FAKE_DOCKER_LOG"'
+out="$(bash "$A" hermes allow https://pc.example.ts.net:9445 model 2>&1)"; rc=$?
+check "hermes allow rejects other targets" '[[ $rc -eq 2 ]]'
 out="$(FAKE_RUNNING=0 bash "$A" hermes login 2>&1)"; rc=$?
 check "hermes login needs a running Hermes" '[[ $rc -ne 0 ]] && grep -q "hermes up" <<<"$out"'
 out="$(bash "$A" hermes local 'bad;name' 2>&1)"; rc=$?

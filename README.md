@@ -165,6 +165,12 @@ in Windows PowerShell. It publishes only the web app, at port 9444 of your tailn
 powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 -Hermes
 ```
 
+The Hermes desktop app connects to the dashboard instead. To use it, also publish the
+dashboard, at port 9445, with `-HermesDashboard`. Then in the app open **Settings** >
+**Gateways**, choose **Remote gateway**, enter `https://YOUR-PC.YOUR-TAILNET.ts.net:9445`,
+sign in as `admin` and save. This worked from a MacBook in testing. Publish the dashboard
+only if you use an app: it also manages Hermes' keys, settings and extensions.
+
 The image is about 4.6 GB. In testing, Hermes used about 400 MB of memory while idle,
 with a 3 GB limit. `backup` does not include Hermes data. Other commands: `hermes status`,
 `hermes logs`, `hermes stop` and `hermes down`, which keeps the data volume.
