@@ -52,6 +52,10 @@ providers use the network.
 - Panel controls run a fixed list of `aiws` commands, one at a time. No text from a request
   reaches a command, the panel gets no Docker socket of its own, and it cannot delete or
   restore data. It runs as your Ubuntu user, so a bug in it would have that user's access.
+- Hermes runs its commands inside its own container, which holds only its data volume.
+  That volume holds your model sign-in, so anyone with the Hermes password can use your
+  plan. Use a unique password, publish only the web app, and keep the dashboard local. The
+  sign-in has a rate limit but no lockout, and it does not check the Host header.
 - Use a strong, unique password for the first Open WebUI account. Sign-up was off after
   the first account in testing. Confirm this in the admin settings.
 - Do not give containers the Docker socket, your home folder or SSH keys.

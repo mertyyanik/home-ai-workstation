@@ -1,15 +1,18 @@
 # Publish the Web UI and optional SSH to your own Tailscale network. Safe to run again.
 # It never uses Funnel, and it never forwards Ollama, which has no login.
 #
-#   powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 [-Ssh] [-Panel]
+#   powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 [-Ssh] [-Panel] [-Hermes]
 param(
     [switch]$Ssh,
     [switch]$Panel,
+    [switch]$Hermes,
     [string]$Distro = 'Ubuntu',
     [ValidateRange(1, 65535)][int]$WebPort = 3000,
     [ValidateRange(1, 65535)][int]$SshPort = 2222,
     [ValidateRange(1, 65535)][int]$PanelPort = 8088,
-    [ValidateRange(1, 65535)][int]$PanelPublicPort = 8443
+    [ValidateRange(1, 65535)][int]$PanelPublicPort = 8443,
+    [ValidateRange(1, 65535)][int]$HermesPort = 9120,
+    [ValidateRange(1, 65535)][int]$HermesPublicPort = 9444
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,5 +108,27 @@ if ($Panel) {
         if ($LASTEXITCODE -ne 0) { exit 1 }
     }
     Write-Host "Status panel: https://${hostName}:$PanelPublicPort (sign-in required)"
+}
+
+if ($Hermes) {
+    # Only the Hermes web app is published. Its dashboard, which manages keys and
+    # settings, stays on this PC.
+    if (-not (Test-LocalPort -Port $HermesPort)) {
+        Write-Host "`nHermes is not listening on 127.0.0.1:$HermesPort. In Ubuntu, run:"
+        Write-Host '  bash scripts/aiws.sh hermes password'
+        Write-Host '  bash scripts/aiws.sh hermes up'
+        exit 1
+    }
+    # Hermes only listens once a password exists, so it is never published without login.
+    $repository = Split-Path -Parent $PSScriptRoot
+    & wsl -d $Distro --cd $repository -- bash scripts/aiws.sh hermes allow "https://${hostName}:$HermesPublicPort"
+    if ($LASTEXITCODE -ne 0) { exit 1 }
+    if ((Get-ServeStatus) -match "proxy http://127\.0\.0\.1:$HermesPort") {
+        Write-Host 'Hermes is already published.'
+    } else {
+        & $tailscale serve --bg "--https=$HermesPublicPort" $HermesPort
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+    }
+    Write-Host "Hermes: https://${hostName}:$HermesPublicPort (sign-in required)"
 }
 exit 0

@@ -34,16 +34,26 @@ case "$*" in
   *"--entrypoint sh open-webui"*"-delete"*) echo cleared >> "$FAKE_DOCKER_LOG" ;;
   *"--entrypoint tar"*"-xzf"*) cat > /dev/null ;;
   *"--entrypoint python3"*) echo 'integrity=ok'; echo 'users=1'; echo 'chats=1' ;;
+  *"--entrypoint grep hermes"*) exit "${FAKE_HERMES_PW_RC:-0}" ;;
+  *"exec -T ollama ollama list"*) echo 'NAME ID SIZE MODIFIED'; printf '%s x 1GB now\n' ${FAKE_MODELS:-qwen3.5:4b} ;;
+  *"exec -T ollama sh -c"*"ollama create"*) cat > "$FAKE_STDIN" ;;
+  *"--entrypoint /opt/hermes/.venv/bin/python hermes"*) cat > "$FAKE_STDIN" ;;
 esac
 exit 0
 EOF
-chmod +x "$T/bin/docker"
+cat > "$T/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "curl $*" >> "$FAKE_DOCKER_LOG"
+printf '%s' "${FAKE_HTTP:-302}"
+EOF
+chmod +x "$T/bin/docker" "$T/bin/curl"
 export PATH="$T/bin:$PATH" FAKE_DOCKER_LOG="$T/docker.log" FAKE_RESTORED="$T/restored.tgz"
+export FAKE_STDIN="$T/stdin.txt"
 unset XDG_CONFIG_HOME AIWS_ENV_FILE
 
 new_repo() {
   mkdir -p "$1/scripts"
-  cp "$SRC/scripts/aiws.sh" "$1/scripts/"
+  cp "$SRC/scripts/aiws.sh" "$SRC/scripts/hermes-password.py" "$1/scripts/"
   cp "$SRC/.env.example" "$SRC/compose.yaml" "$SRC/VERSION" "$1/"
 }
 HEX='^WEBUI_SECRET_KEY=[a-f0-9]{64}$'
@@ -346,6 +356,58 @@ out="$(OLLAMA_PORT=11499 AIWS_PANEL_PORT=8099 bash "$A" panel 2>&1)"; rc=$?
 check "panel starts" '[[ $rc -eq 0 ]]'
 check "panel receives ports" 'grep -q -- "--port 8099" <<<"$out" && grep -q -- "--ollama-port 11499" <<<"$out"'
 check "panel receives no secret" '! grep -q "$(sed -n "s/^WEBUI_SECRET_KEY=//p" "$HOME/.config/home-ai-workstation/aiws.env")" <<<"$out"'
+
+# 19. Hermes: password first, password only on stdin, loopback addresses, URL check
+R="$T/repo9"; new_repo "$R"; export HOME="$T/home9"; mkdir -p "$HOME"
+A="$R/scripts/aiws.sh"
+bash "$A" init >/dev/null 2>&1
+: > "$FAKE_DOCKER_LOG"
+out="$(FAKE_HERMES_PW_RC=1 bash "$A" hermes up 2>&1)"; rc=$?
+check "hermes up refuses without a password" '[[ $rc -ne 0 ]] && grep -q "hermes password" <<<"$out"'
+check "hermes up starts nothing without a password" '! grep -q "up -d" "$FAKE_DOCKER_LOG"'
+: > "$FAKE_DOCKER_LOG"
+out="$(bash "$A" hermes up 2>&1)"; rc=$?
+check "hermes up uses the profile" '[[ $rc -eq 0 ]] && grep -q -- "--profile hermes up -d hermes" "$FAKE_DOCKER_LOG"'
+check "hermes up shows local addresses" 'grep -q "http://localhost:9120" <<<"$out" && grep -q "http://localhost:9119" <<<"$out"'
+out="$(FAKE_HTTP=503 AIWS_READY_TIMEOUT=3 bash "$A" hermes up 2>&1)"; rc=$?
+check "hermes up waits past 503 and times out" '[[ $rc -ne 0 ]] && grep -q "not ready" <<<"$out"'
+: > "$FAKE_DOCKER_LOG"; rm -f "$FAKE_STDIN"
+out="$(echo 'too-short' | bash "$A" hermes password 2>&1)"; rc=$?
+check "hermes password rejects short input" '[[ $rc -ne 0 ]] && [[ ! -e "$FAKE_STDIN" ]]'
+PW="test-$(openssl rand -hex 12)"
+: > "$FAKE_DOCKER_LOG"
+out="$(echo "$PW" | FAKE_RUNNING=0 bash "$A" hermes password 2>&1)"; rc=$?
+check "hermes password succeeds" '[[ $rc -eq 0 ]] && grep -q "Password set" <<<"$out"'
+check "password reaches the container on stdin" '[[ "$(cat "$FAKE_STDIN")" == "$PW" ]]'
+check "password is not in any argument" '! grep -qF -- "$PW" "$FAKE_DOCKER_LOG"'
+check "password step skips the image init" 'grep -q -- "--user hermes --entrypoint /opt/hermes/.venv/bin/python hermes" "$FAKE_DOCKER_LOG"'
+out="$(bash "$A" hermes allow http://example.test 2>&1)"; rc=$?
+check "hermes allow rejects a non-https URL" '[[ $rc -eq 2 ]]'
+: > "$FAKE_DOCKER_LOG"
+bash "$A" hermes allow https://pc.example.ts.net:9444 >/dev/null 2>&1
+check "hermes allow sets the web app address" 'grep -q "hermes config set webapp.public_url https://pc.example.ts.net:9444" "$FAKE_DOCKER_LOG"'
+out="$(FAKE_RUNNING=0 bash "$A" hermes login 2>&1)"; rc=$?
+check "hermes login needs a running Hermes" '[[ $rc -ne 0 ]] && grep -q "hermes up" <<<"$out"'
+out="$(bash "$A" hermes local 'bad;name' 2>&1)"; rc=$?
+check "hermes local rejects a bad model name" '[[ $rc -eq 2 ]]'
+out="$(bash "$A" hermes local llama9:1b 2>&1)"; rc=$?
+check "hermes local needs a downloaded model" '[[ $rc -ne 0 ]] && grep -q "pull llama9:1b" <<<"$out"'
+: > "$FAKE_DOCKER_LOG"; rm -f "$FAKE_STDIN"
+out="$(bash "$A" hermes local 2>&1)"; rc=$?
+check "hermes local succeeds" '[[ $rc -eq 0 ]] && grep -q "qwen3.5:4b-64k" <<<"$out"'
+check "hermes local makes a 64K variant" 'grep -qx "FROM qwen3.5:4b" "$FAKE_STDIN" && grep -qx "PARAMETER num_ctx 65536" "$FAKE_STDIN"'
+check "hermes local registers the internal address" 'grep -q "config set providers.ollama-local .*http://ollama:11434/v1.*qwen3.5:4b-64k" "$FAKE_DOCKER_LOG"'
+check "hermes local keeps the default model" '! grep -q "config set model" "$FAKE_DOCKER_LOG"'
+: > "$FAKE_DOCKER_LOG"
+out="$(bash "$A" hermes local qwen3.5:4b gemma4:e2b 2>&1)"; rc=$?
+check "hermes local refuses if any model is missing" '[[ $rc -ne 0 ]] && grep -q "pull gemma4:e2b" <<<"$out" && ! grep -q "ollama create" "$FAKE_DOCKER_LOG"'
+out="$(FAKE_MODELS='qwen3.5:4b gemma4:e2b' bash "$A" hermes local qwen3.5:4b gemma4:e2b 2>&1)"; rc=$?
+check "hermes local registers several models" '[[ $rc -eq 0 ]] && grep -q "\"qwen3.5:4b-64k\": .*\"gemma4:e2b-64k\": " "$FAKE_DOCKER_LOG"'
+out="$(FAKE_RUNNING=0 bash "$A" hermes local 2>&1)"; rc=$?
+check "hermes local needs Ollama running" '[[ $rc -ne 0 ]] && grep -q "Ollama is not running" <<<"$out"'
+: > "$FAKE_DOCKER_LOG"
+bash "$A" down >/dev/null 2>&1
+check "down still never passes -v" '! grep -Eq -- "down.*(-v|--volumes)" "$FAKE_DOCKER_LOG"'
 
 echo "---- $pass passed, $fail failed"
 [[ $fail -eq 0 ]]

@@ -56,6 +56,7 @@ Home AI Workstation — CLI (run inside WSL Ubuntu)
   bash scripts/aiws.sh panel              Start the read-only status panel
   bash scripts/aiws.sh panel-password     Set the panel password
   bash scripts/aiws.sh panel-allow HOST   Allow a host name for the panel
+  bash scripts/aiws.sh hermes COMMAND     Optional Hermes agent; run "hermes help"
   bash scripts/aiws.sh version            Show the project version
 
 backup briefly stops Open WebUI. Ollama models are not included; models.txt lists
@@ -433,6 +434,187 @@ backup_import() (
   echo 'Check it with: bash scripts/aiws.sh restore-test BACKUP_DIR'
 )
 
+# ---- Hermes agent (optional, compose profile "hermes") ----
+
+hermes_compose() {
+  compose --profile hermes "$@"
+}
+
+hermes_port() {
+  local name="$1" fallback="$2" port
+  port="${!name:-}"
+  [[ -n "$port" ]] || port="$(env_value "$name")"
+  echo "${port:-$fallback}"
+}
+
+hermes_running() {
+  [[ -n "$(hermes_compose ps -q --status running hermes 2>/dev/null)" ]]
+}
+
+# True when a password hash is stored. Reads the volume without starting Hermes.
+hermes_has_password() {
+  hermes_compose run --rm --no-deps -T --entrypoint grep hermes \
+    -Eq "^ +password_hash: ['\"]?scrypt[$]" /opt/data/config.yaml >/dev/null 2>&1
+}
+
+# Wait until both web endpoints answer on their loopback ports.
+hermes_wait() {
+  local timeout="${AIWS_READY_TIMEOUT:-180}" deadline port ready code
+  deadline=$((SECONDS + timeout))
+  echo "Waiting for Hermes (up to ${timeout}s)..."
+  while ((SECONDS < deadline)); do
+    ready=1
+    for port in "$(hermes_port HERMES_DASHBOARD_PORT 9119)" "$(hermes_port HERMES_WEBAPP_PORT 9120)"; do
+      # The sign-in redirect means the page is up; the web app answers 503 while it starts.
+      code="$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:$port/" || true)"
+      [[ "$code" =~ ^[23] ]] || ready=0
+    done
+    if ((ready)); then
+      echo 'OK: Hermes is ready.'
+      return 0
+    fi
+    sleep 3
+  done
+  echo "ERROR: Hermes was not ready within ${timeout}s." >&2
+  hermes_compose logs --tail=30 hermes >&2 || true
+  return 1
+}
+
+hermes_password() (
+  local password='' confirm=''
+  if [[ -t 0 ]]; then
+    read -rsp 'New Hermes password (at least 12 characters): ' password; echo
+    read -rsp 'Repeat it: ' confirm; echo
+    if [[ "$password" != "$confirm" ]]; then
+      echo 'ERROR: The passwords do not match; nothing was changed.' >&2
+      exit 1
+    fi
+  else
+    IFS= read -r password || true
+  fi
+  if ((${#password} < 12)); then
+    echo 'ERROR: Use at least 12 characters; nothing was changed.' >&2
+    exit 1
+  fi
+  # Run only this script, not the image's init: a second gateway must never
+  # share the data volume with a running one.
+  printf '%s\n' "$password" | hermes_compose run --rm --no-deps -T --user hermes \
+    --entrypoint /opt/hermes/.venv/bin/python hermes \
+    -c "$(cat scripts/hermes-password.py)" "${AIWS_HERMES_USER:-admin}"
+  echo "Password set for user ${AIWS_HERMES_USER:-admin}. Existing sessions are signed out."
+  if hermes_running; then
+    hermes_compose restart hermes >/dev/null
+    hermes_wait
+  fi
+)
+
+# Offer local Ollama models in Hermes' model menu, next to the default provider. The list
+# given replaces the previous one. Hermes needs a long context, so a 64K variant of each
+# model is created; Open WebUI keeps its own setting.
+hermes_local() (
+  local models=("$@") base variant entries='' downloaded
+  ((${#models[@]})) || models=("$(default_model)")
+  for base in "${models[@]}"; do
+    if [[ ! "$base" =~ ^[a-z0-9][a-z0-9._-]*:[a-z0-9._-]+$ ]]; then
+      echo 'Usage: hermes local [MODEL:TAG ...]  (default: DEFAULT_MODEL, e.g. qwen3.5:4b)' >&2
+      exit 2
+    fi
+  done
+  if ! service_running ollama; then
+    echo 'ERROR: Ollama is not running. Start it with: bash scripts/aiws.sh chat' >&2
+    exit 1
+  fi
+  if ! hermes_running; then
+    echo 'ERROR: Start Hermes first: bash scripts/aiws.sh hermes up' >&2
+    exit 1
+  fi
+  downloaded="$(compose exec -T ollama ollama list | awk 'NR>1 {print $1}')"
+  for base in "${models[@]}"; do
+    if ! grep -qxF -- "$base" <<<"$downloaded"; then
+      echo "ERROR: $base is not downloaded. Run: bash scripts/aiws.sh pull $base" >&2
+      exit 1
+    fi
+  done
+  for base in "${models[@]}"; do
+    variant="$base-64k"
+    # The variant shares the base model's weights; only a small manifest is added.
+    # shellcheck disable=SC2016  # $1 expands inside the container's shell.
+    printf 'FROM %s\nPARAMETER num_ctx 65536\n' "$base" | compose exec -T ollama sh -c \
+      'cat > /tmp/aiws.Modelfile && ollama create "$1" -f /tmp/aiws.Modelfile >/dev/null 2>&1; rc=$?; rm -f /tmp/aiws.Modelfile; exit $rc' \
+      sh "$variant" || { echo "ERROR: Ollama could not create $variant." >&2; exit 1; }
+    entries+="${entries:+, }\"$variant\": {\"context_length\": 65536}"
+  done
+  # Ollama is reached over the internal compose network; its port is never published for this.
+  hermes_compose exec -T -u hermes hermes hermes config set providers.ollama-local \
+    "{\"name\": \"Ollama (local)\", \"api\": \"http://ollama:11434/v1\", \"api_key\": \"ollama\", \"discover_models\": false, \"models\": {$entries}}" \
+    >/dev/null
+  hermes_compose restart hermes >/dev/null
+  hermes_wait
+  echo "Hermes now offers under \"Ollama (local)\": ${models[*]/%/-64k}"
+  echo 'The default model is unchanged. Local models need Ollama, so not in ML mode.'
+)
+
+hermes_info() {
+  echo "Hermes web app (local only):   http://localhost:$(hermes_port HERMES_WEBAPP_PORT 9120)"
+  echo "Hermes dashboard (local only): http://localhost:$(hermes_port HERMES_DASHBOARD_PORT 9119)"
+}
+
+hermes_command() {
+  case "${1:-help}" in
+    up)
+      if ! hermes_has_password; then
+        echo 'ERROR: Set a Hermes password first: bash scripts/aiws.sh hermes password' >&2
+        exit 1
+      fi
+      hermes_compose up -d hermes
+      hermes_wait
+      hermes_info
+      ;;
+    stop) hermes_compose stop hermes ;;
+    down) hermes_compose rm -sf hermes; echo 'Hermes container removed. Its data volume is kept.' ;;
+    password) hermes_password ;;
+    local) shift; hermes_local "$@" ;;
+    login)
+      if ! hermes_running; then
+        echo 'ERROR: Start Hermes first: bash scripts/aiws.sh hermes up' >&2
+        exit 1
+      fi
+      # Pick "ChatGPT or Codex Subscription"; the sign-in shows a code to enter.
+      hermes_compose exec -u hermes hermes hermes model
+      ;;
+    allow)
+      if [[ ! "${2:-}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+        echo 'Usage: hermes allow https://HOST[:PORT]  (the exact address your browser opens)' >&2
+        exit 2
+      fi
+      hermes_compose exec -T -u hermes hermes hermes config set webapp.public_url "$2" >/dev/null
+      hermes_compose restart hermes >/dev/null
+      hermes_wait
+      ;;
+    status)
+      hermes_compose ps hermes
+      if hermes_running; then hermes_info; fi
+      ;;
+    logs) shift; hermes_compose logs --tail=100 "$@" hermes ;;
+    *)
+      cat <<'EOF'
+Usage: bash scripts/aiws.sh hermes COMMAND
+
+  password         Set the sign-in password (needed before the first start)
+  up               Start Hermes and wait until its web pages answer
+  login            Choose the model and sign in, e.g. with your ChatGPT plan
+  local [MODEL...] Offer local Ollama models (64K context) in the model menu; the list
+                   given replaces the previous one
+  status           Show the container and its local addresses
+  logs [-f]        Show the last 100 log lines; -f follows
+  allow URL        Accept the web app's remote address, e.g. https://pc.example.ts.net:9444
+  stop             Stop Hermes; keep its container and data
+  down             Remove the container; keep its data volume
+EOF
+      ;;
+  esac
+}
+
 install() {
   local option skip_gpu=0 skip_models=0
   local self=(bash "$REPO_DIR/scripts/aiws.sh")
@@ -574,6 +756,11 @@ case "${1:-help}" in
     exec python3 panel/auth_tool.py --config "$PANEL_CONFIG" allow "$2"
     ;;
   version) cat VERSION ;;
+  hermes)
+    require_docker; require_env
+    shift
+    hermes_command "$@"
+    ;;
   models)
     require_docker; require_env
     compose exec -T ollama ollama list

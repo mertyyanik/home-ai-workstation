@@ -50,6 +50,29 @@ services:
     networks:
       - ai_internal
 
+  # Optional agent with its own web UI. Starts only with: bash scripts/aiws.sh hermes up
+  hermes:
+    image: nousresearch/hermes-agent:${HERMES_TAG:-v0.23.2@sha256:d6746a084e9341baada483e3d6210444d3c1aeb7c130f0915150065fb2851459}
+    profiles: ["hermes"]
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["gateway", "run"]
+    environment:
+      HERMES_DASHBOARD: "1"
+    # Commands run inside this container, which holds only its own data volume:
+    # no project folder, no secrets from the host, no Docker socket.
+    volumes:
+      - hermes_data:/opt/data
+    # Loopback only. The dashboard and the web app refuse to start without a
+    # password, which bash scripts/aiws.sh hermes password sets.
+    ports:
+      - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
+      - "127.0.0.1:${HERMES_WEBAPP_PORT:-9120}:9120"
+    shm_size: "1g"
+    mem_limit: "3g"
+    networks:
+      - ai_internal
+
 networks:
   ai_internal:
     driver: bridge
@@ -57,3 +80,4 @@ networks:
 volumes:
   ollama_data:
   open_webui_data:
+  hermes_data:

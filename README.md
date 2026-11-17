@@ -18,6 +18,7 @@ installation on a completely clean system has not been tested yet.
 | ML environment | PyTorch with CUDA and JupyterLab in WSL Ubuntu |
 | Remote access | Web UI and SSH from your own devices through Tailscale |
 | Coding agents | Claude Code, Codex and local models in VS Code |
+| Personal agent | Optional Hermes Agent with a web app, using your ChatGPT plan |
 
 The Web UI and Ollama listen on `127.0.0.1` only. See `docs/SECURITY.md`.
 
@@ -115,6 +116,58 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 -Panel
 
 It prints the private address. Five wrong passwords lock sign-in for 60 seconds, and a
 session lasts 12 hours.
+
+## Hermes agent (optional)
+
+[Hermes Agent](https://hermes-agent.nousresearch.com/) is a personal agent with memory,
+skills and its own web app. Here it runs in its own container with only its own data
+volume: no project folder, no host secrets and no Docker socket. `up` does not start it.
+
+Set a password first; Hermes does not listen without one. The user name is `admin`:
+
+```bash
+bash scripts/aiws.sh hermes password
+bash scripts/aiws.sh hermes up
+bash scripts/aiws.sh hermes login
+```
+
+`login` opens Hermes' model menu. With **ChatGPT or Codex Subscription** you sign in with a
+code, and use counts against your ChatGPT plan's Codex limits. Claude Pro and Max plans
+are not an option: Anthropic does not allow them in third-party tools, and Hermes bills
+them as extra usage.
+
+To also offer local models in Hermes' model menu, without changing the default, run:
+
+```bash
+bash scripts/aiws.sh hermes local qwen3.5:4b gemma4:e2b
+```
+
+It adds a 64K-context variant of each, such as `qwen3.5:4b-64k`, under **Ollama (local)**.
+The list replaces the previous one; without names it uses `DEFAULT_MODEL`. Variants share
+the model's weights, and Open WebUI keeps its own setting. Hermes asks for at least a 64K
+context, and its own instructions take about 11K tokens per request. Local models are
+weaker than hosted ones and are unavailable in ML mode, which stops Ollama.
+
+Measured on the 8 GB GPU at 64K, each with two short terminal tasks through Hermes:
+
+| Model | GPU fit | Tokens/s | Result |
+| --- | --- | --- | --- |
+| `qwen3.5:4b` | Full | 70 | Both correct |
+| `gemma4:e2b` | Full | 130 | Both correct |
+| `qwen3.5:9b` | 64% | 9 | Works, but slow |
+| `qwen2.5-coder:7b` | — | — | Unsuitable: 32K context at most |
+
+The web app is at `http://localhost:9120` and the dashboard, which manages keys and
+settings, at `http://localhost:9119`. To use the web app from your other devices, run this
+in Windows PowerShell. It publishes only the web app, at port 9444 of your tailnet name:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-remote.ps1 -Hermes
+```
+
+The image is about 4.6 GB. In testing, Hermes used about 400 MB of memory while idle,
+with a 3 GB limit. `backup` does not include Hermes data. Other commands: `hermes status`,
+`hermes logs`, `hermes stop` and `hermes down`, which keeps the data volume.
 
 ## Local models
 

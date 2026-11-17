@@ -9,6 +9,7 @@ advice. Last reviewed in November 2026.
 | --- | --- | --- |
 | [Ollama](https://github.com/ollama/ollama) | Official Docker image, pulled at install | MIT |
 | [Open WebUI](https://github.com/open-webui/open-webui) | Official Docker image, pulled at install | Open WebUI License |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Optional, official Docker image | MIT |
 | `qwen3.5:4b` | Downloaded by the user through Ollama | Apache 2.0 |
 | `gemma4:e2b` | Optional, downloaded by the user through Ollama | Apache 2.0 |
 | `qwen2.5-coder:7b` | Downloaded by the user through Ollama | Apache 2.0 |

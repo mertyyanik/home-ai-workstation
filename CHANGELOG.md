@@ -21,6 +21,9 @@ Versions follow the stages in `docs/ROADMAP.md`. No tagged release exists yet.
 - Project rules template for ML work
 - ShellCheck and PowerShell analysis in CI
 - `docs/UPGRADE.md` for testing, applying and rolling back image changes
+- Optional Hermes Agent with its web app: `aiws hermes` commands, password before first
+  start, ChatGPT plan sign-in, `setup-remote.ps1 -Hermes` for the tailnet, and
+  `aiws hermes local` for an optional 64K local model in its model menu
 - `scripts/fix-wsl-lso.ps1`, which keeps Large Send Offload off on the WSL network adapter
   so Ubuntu downloads stay fast after a restart
 
